@@ -1,16 +1,22 @@
 # POVa_face_identification
 POVa project (Computer Vision) at FIT (B|V)UT. 2024/2025 winter semestr
 
+## Proposal
+- [ ] prezentace
+ - outline your experiments including datasets and evaluation metrics
+
 ## TODOs
 - [ ] demo app
   - camera input, take a photo, run engine, find closest embeddings in a database, show result
-- [ ] research existing datasets
-- [ ] create our dataset
-- [ ] facial detection
+- [ ] research existing datasets [Martin]
+- [ ] facial detection [Zuzka]
   - [ ] find and test a few existing approaches
-- [ ] facial recognition
+  - [ ] OpenCV, MTCNN
+- [ ] facial recognition / identification  [Vojta]
   - [ ] evaluation of existing models
   - [ ] fine-tuning (training on a new task)
+
+- [ ] create our dataset
 
 
 ## Assignement
