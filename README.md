@@ -3,13 +3,14 @@ POVa project (Computer Vision) at FIT (B|V)UT. 2024/2025 winter semestr
 
 ## TODOs
 - [ ] demo app
-  - camera input, take a photo, run engine, show result
+  - camera input, take a photo, run engine, find closest embeddings in a database, show result
 - [ ] research existing datasets
 - [ ] create our dataset
-- [ ] facial recognition engine (do I know you?)
+- [ ] facial detection
+  - [ ] find and test a few existing approaches
+- [ ] facial recognition
   - [ ] evaluation of existing models
-  - [ ] fine-tuning
-
+  - [ ] fine-tuning (training on a new task)
 
 
 ## Assignement
