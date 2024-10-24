@@ -86,6 +86,11 @@ def test_engine_with_ORL_dataset():
     if match_index is not None:
         print(f"Closest match: Face {match_index}, Distance: {distance}")
 
+    # display distances in a histogram
+    import matplotlib.pyplot as plt
+    plt.hist(distances, bins=30)
+    plt.title('Distances to known embeddings')
+    plt.show()
 
 if __name__ == '__main__':
     test_engine_with_ORL_dataset()

@@ -20,6 +20,12 @@ class ORLDataset:
         self.targets = self.dataset.target  # (400,)
         self.DESCR = self.dataset.DESCR
 
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        return self.images[idx], self.targets[idx]
+
     def save_images(self, folder_path: str):
         """for every target, create one figure with 10 subplots and save it to a file in folder path."""
 
