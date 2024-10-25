@@ -2,20 +2,25 @@
 POVa project (Computer Vision) at FIT (B|V)UT. 2024/2025 winter semestr
 
 ## Proposal
-- [ ] prezentace
+- [ ] paper (článek)
  - outline your experiments including datasets and evaluation metrics
+- [ ] evaluation style and results with baseline
 
 ## TODOs
-- [ ] demo app
-  - camera input, take a photo, run engine, find closest embeddings in a database, show result
-- [ ] research existing datasets [Martin]
+- [x] research existing datasets [Martin]
+  - [ ] labeled faces in the wild (13 000 images, 5749 lidí (1680 lidí s dvěma a více fotkama))
+  - [ ] (CASIA web-Face)
 - [ ] facial detection [Zuzka]
-  - [ ] find and test a few existing approaches
-  - [ ] OpenCV, MTCNN
+  - [x] find and test a few existing approaches
+  - chosen DLib
+  - [ ] ~~OpenCV, MTCNN~~
+  - [ ] evaluation on existing dataset
 - [ ] facial recognition / identification  [Vojta]
   - [ ] evaluation of existing models
   - [ ] fine-tuning (training on a new task)
 
+- [ ] demo app
+  - camera input, take a photo, run engine, find closest embeddings in a database, show result
 - [ ] create our dataset
 
 
