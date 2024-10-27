@@ -19,24 +19,34 @@ class DistanceFunction(Enum):
     COSINE = 'cosine'
 
 
+class ClassEmbeddingStyle(Enum):
+    FIRST = 'first'
+    RANDOM = 'random'
+    MEAN = 'mean'
+    MEDIAN = 'median'
+    MIN = 'min'
+    MAX = 'max'
+
+
 class FaceIdentificationEngine:
-    def __init__(self, embedding_model: FaceEmbeddingEngine, known_embeddings: np.ndarray,
+    def __init__(self, embedding_model: FaceEmbeddingEngine,
+                 images: list[np.ndarray], target_classes: list[str],
+                 class_embedding_file: str, force_new_class_embeddings: bool = False,
                  distance_function: DistanceFunction = DistanceFunction.COSINE,
-                 class_ids: list[str] = None):
+                 class_embedding_style: ClassEmbeddingStyle = ClassEmbeddingStyle.FIRST):
         # TODO handle face detection (and alignment)
 
         self.embedding_model = embedding_model
-
-        assert len(known_embeddings) > 0, "Known embeddings must not be empty."
-        assert len(known_embeddings.shape) == 2, "Known embeddings must be a 2D array."
-        self.known_embeddings = known_embeddings
-
         self.distance_function = distance_function
+        self.class_embedding_style = class_embedding_style
+        self.class_embedding_file = class_embedding_file if class_embedding_file.endswith('.npy') else class_embedding_file + '.npy'
+        self.class_ids_file = class_embedding_file.replace('.npy', '_class_ids.npy')
+        self.force_new_class_embeddings = force_new_class_embeddings
 
-        if class_ids is None:
-            class_ids = [str(i) for i in range(len(known_embeddings))]
-        assert len(class_ids) == len(known_embeddings), "Number of class IDs must match number of known embeddings."
-        self.class_ids = class_ids
+        assert len(images) > 0, "Images must not be empty."
+        assert len(images) == len(target_classes), "Number of images must match number of class IDs."
+
+        self.class_embeddings, self.class_ids = self.load_or_create_class_embeddings(images, target_classes)
 
     def __call__(self, input_image):
         if isinstance(input_image, list):
@@ -52,10 +62,10 @@ class FaceIdentificationEngine:
 
         # Compute distances using the specified distance function
         if self.distance_function == DistanceFunction.EUCLIDEAN:
-            distances = np.linalg.norm(self.known_embeddings - image_embedding, axis=1)
+            distances = np.linalg.norm(self.class_embeddings - image_embedding, axis=1)
             closest_match_index = np.argmin(distances)
         elif self.distance_function == DistanceFunction.COSINE:
-            distances = F.cosine_similarity(torch.tensor(self.known_embeddings), torch.tensor(image_embedding), dim=1)
+            distances = F.cosine_similarity(torch.tensor(self.class_embeddings), torch.tensor(image_embedding), dim=1)
             closest_match_index = torch.argmax(distances).item()
 
         # return closest match class id and distances as a dict(key: class_id, value: distance)
@@ -63,22 +73,128 @@ class FaceIdentificationEngine:
 
         return self.class_ids[closest_match_index], distances
 
+    def load_or_create_class_embeddings(self, images: list[np.ndarray], target_classes: list[str]) -> (np.ndarray, list[str]):
+        class_embeddings = None
+        class_ids = None
+
+        if (not self.force_new_class_embeddings and 
+            (os.path.exists(self.class_embedding_file) and os.path.exists(self.class_ids_file))):
+                class_embeddings = np.load(self.class_embedding_file)
+                class_ids = np.load(self.class_ids_file)
+
+                # check if class_ids are the same as the ones provided
+                unique_classes_ref = list(set(target_classes))
+                unique_classes = list(set(class_ids))
+                if sorted(unique_classes) != sorted(unique_classes_ref):
+                    print(f"Class IDs in the file {self.class_ids_file} do not match the provided target classes.")
+                    print("Creating new class embeddings.")
+                    class_embeddings = None
+                    class_ids = None
+                else:
+                    print(f'Loaded class embeddings from {self.class_embedding_file}')
+
+        if class_embeddings is None or class_ids is None:
+            class_embeddings, class_ids = create_class_embeddings(self.embedding_model, images, target_classes, self.class_embedding_style)
+
+        # check correctness of class embeddings and class ids
+        assert len(class_embeddings.shape) == 2, "Class embeddings must be a 2D array."
+        assert len(class_ids) == len(class_embeddings), "Number of class IDs must match number of known embeddings."
+
+        # save class_embeddings and class_ids to file
+        os.makedirs(os.path.dirname(self.class_embedding_file), exist_ok=True)
+        np.save(self.class_embedding_file, class_embeddings)
+        np.save(self.class_ids_file, class_ids)
+        
+        return class_embeddings, class_ids
+
+
+def create_class_embeddings(embedding_engine: FaceEmbeddingEngine, images: list[np.ndarray], target_classes: list[str],
+                            class_embedding_style: ClassEmbeddingStyle = ClassEmbeddingStyle.FIRST):
+    assert len(images) > 0, "Images must not be empty."
+    assert len(images) == len(target_classes), f"Number of images must match number of target classes. Got {len(images)} images and {len(target_classes)} target classes."
+
+    # create a unique class id for every class
+    # assume the classes can be mixed e.g. classes: ['A', 'B', 'A', 'C', 'B', 'A']
+    unique_classes = {}
+    class_ids = []
+    for class_name in target_classes:
+        if class_name not in unique_classes:
+            unique_classes[class_name] = len(unique_classes)
+        class_ids.append(unique_classes[class_name])
+
+    # create class embeddings for every unique class
+    class_embeddings = np.zeros((len(unique_classes), embedding_engine.DIM))
+    class_order = []
+    for class_name, class_id in unique_classes.items():
+        # class images = images where class_id == class_ids
+        class_images = images[np.where(np.array(class_ids) == class_id)]
+        print(f'creating class embedding for {class_name} with {len(class_images)} images')
+
+        class_embedding = create_class_embedding(embedding_engine, class_images, class_embedding_style)
+
+        # class_embeddings.append(class_embedding)
+        class_embeddings[class_id] = class_embedding
+        class_order.append(class_name)
+
+    return class_embeddings, class_order
+
+
+def create_class_embedding(embedding_engine: FaceEmbeddingEngine, images: list[np.ndarray], class_embedding_style: ClassEmbeddingStyle = ClassEmbeddingStyle.FIRST):
+    assert len(images) > 0, "Images must not be empty."
+
+    if class_embedding_style == ClassEmbeddingStyle.FIRST:
+        return embedding_engine(images[0])
+    elif class_embedding_style == ClassEmbeddingStyle.RANDOM:
+        random_idx = np.random.randint(len(images))
+        return embedding_engine(images[random_idx])
+
+    embeddings = embedding_engine(images)
+
+    if class_embedding_style == ClassEmbeddingStyle.MEAN:
+        return np.mean(embeddings, axis=0)
+    elif class_embedding_style == ClassEmbeddingStyle.MEDIAN:
+        return np.median(embeddings, axis=0)
+    elif class_embedding_style == ClassEmbeddingStyle.MIN:
+        return np.min(embeddings, axis=0)
+    elif class_embedding_style == ClassEmbeddingStyle.MAX:
+        return np.max(embeddings, axis=0)
+    else:
+        raise ValueError(f"Unknown class embedding style: {class_embedding_style}")
+
+
+def grayscale_to_color(images: list[np.ndarray], permute: bool = False) -> np.ndarray:
+    # (H, W) grayscale images to to (H, W, C)
+    images = [np.stack([image, image, image], axis=2) for image in images]
+    if permute:
+        # (H, W, C) to (C, H, W)
+        images = [np.transpose(image, (2, 0, 1)).astype(np.float32) for image in images]
+
+    return np.array(images)
+
+
 def test_engine_with_ORL_dataset():
     dataset = ORLDataset()
-    embedding_engine = ResnetEmbeddingEngine()
+    print(f'{dataset.images[0].shape = }')
 
-    # create known embeddings fro every image class in the dataset by taking the first image of each class
-    known_embeddings = []
-    for i in range(40):
-        embedding = embedding_engine(dataset.images[i*10])
-        known_embeddings.append(embedding)
-    known_embeddings = np.array(known_embeddings)
+    orl_images_color = grayscale_to_color(dataset.images, permute=True)
+    print(f'{type(orl_images_color) = }')
+    print(f'{orl_images_color[0].shape = }')
 
-    identification_engine = FaceIdentificationEngine(embedding_engine, known_embeddings=known_embeddings)
+    embedding_engine = ResnetEmbeddingEngine(device='cpu')
+
+    # initialize face identification engine
+    targets_str = [str(target) for target in dataset.targets]
+    identification_engine = FaceIdentificationEngine(embedding_engine, orl_images_color, targets_str,
+                                                     class_embedding_style=ClassEmbeddingStyle.MEAN,
+                                                     class_embedding_file='face_identification/tmp/class_embeddings.npy')
 
     # Identify face
-    query_image = dataset.images[5]
-    match_index, distances = identification_engine.identify_face(query_image)
+    test_image_index = 12
+    query_image = orl_images_color[test_image_index]
+    print(f'Testing image {test_image_index} from class {targets_str[test_image_index]}')
+
+    query_image = orl_images_color[12]
+    match_index, distances = identification_engine(query_image)
     distance = distances[match_index]
 
     if match_index is not None:
@@ -86,13 +202,6 @@ def test_engine_with_ORL_dataset():
 
     print(f'distances: {distances}')
 
-    # # display distances in a histogram
-    # import matplotlib.pyplot as plt
-    # plt.hist(distances, bins=30)
-    # plt.title('Distances to known embeddings')
-    # plt.savefig('distances_histogram.png')
-    # plt.clf() # clear the plot
-    # # plt.show()
 
 if __name__ == '__main__':
     test_engine_with_ORL_dataset()
