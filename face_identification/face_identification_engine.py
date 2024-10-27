@@ -19,6 +19,15 @@ class DistanceFunction(Enum):
     COSINE = 'cosine'
 
 
+def distance_criterium_is_max(distance_function: DistanceFunction) -> bool:
+    if distance_function == DistanceFunction.EUCLIDEAN:
+        return False
+    elif distance_function == DistanceFunction.COSINE:
+        return True
+    else:
+        raise ValueError(f"Unknown distance function: {distance_function}")
+
+
 class ClassEmbeddingStyle(Enum):
     FIRST = 'first'
     RANDOM = 'random'
@@ -42,6 +51,8 @@ class FaceIdentificationEngine:
         self.class_embedding_file = class_embedding_file if class_embedding_file.endswith('.npy') else class_embedding_file + '.npy'
         self.class_ids_file = class_embedding_file.replace('.npy', '_class_ids.npy')
         self.force_new_class_embeddings = force_new_class_embeddings
+
+        self.distance_criterium = 'max' if distance_function == DistanceFunction.COSINE else 'min'
 
         assert len(images) > 0, "Images must not be empty."
         assert len(images) == len(target_classes), "Number of images must match number of class IDs."
@@ -182,9 +193,7 @@ def test_engine_with_ORL_dataset():
     match_index, distances = identification_engine(query_image)
     distance = distances[match_index]
 
-    if match_index is not None:
-        print(f"Closest match: Face {match_index}, Distance: {distance}")
-
+    print(f"Closest match: Face {match_index}, Distance: {distance}")
     print(f'distances: {distances}')
 
 

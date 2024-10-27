@@ -26,6 +26,7 @@ class ORLDataset:
         self.images = self.dataset.images # (400, 64, 64)
         self.images = grayscale_to_color(self.images, permute=True) # (400, 3, 64, 64)
         self.targets = self.dataset.target  # (400,)
+        self.targets = [str(target) for target in self.targets]  # for testing purposes
         self.DESCR = self.dataset.DESCR
 
         # data = images in 1D
