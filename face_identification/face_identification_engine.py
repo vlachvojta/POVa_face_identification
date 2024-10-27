@@ -11,7 +11,7 @@ sys.path.append(os.getcwd())
 sys.path.append(os.path.dirname(os.getcwd()))
 
 from datasets.ORL_dataset import ORLDataset
-from face_identification.face_embedding_engine import FaceEmbeddingEngine
+from face_identification.face_embedding_engine import FaceEmbeddingEngine, ResnetEmbeddingEngine
 
 
 class DistanceFunction(Enum):
@@ -20,61 +20,51 @@ class DistanceFunction(Enum):
 
 
 class FaceIdentificationEngine:
-    def __init__(self, embedding_model: callable, min_face_size: int = 160, 
-                 known_embeddings: list = None, distance_function: DistanceFunction = DistanceFunction.COSINE):
-        # TODO handle face detection and alignment
+    def __init__(self, embedding_model: FaceEmbeddingEngine, known_embeddings: np.ndarray,
+                 distance_function: DistanceFunction = DistanceFunction.COSINE):
+        # TODO handle face detection (and alignment)
 
         self.embedding_model = embedding_model
-        self.min_face_size = min_face_size
+
+        assert len(known_embeddings) > 0, "Known embeddings must not be empty."
+        assert len(known_embeddings.shape) == 2, "Known embeddings must be a 2D array."
         self.known_embeddings = known_embeddings
+
         self.distance_function = distance_function
 
+    def __call__(self, input_image):
+        if isinstance(input_image, list):
+            return [self.__call__(i) for i in input_image]
+
+        return self.identify_face(input_image)
+
     def identify_face(self, image):
-        # Load the image
         image_embedding = self.embedding_model(image)
-        # query_embedding = self.extract_face_embeddings(image)
 
         if image_embedding is None:
             return None, None
 
+        # Compute distances using the specified distance function
         if self.distance_function == DistanceFunction.EUCLIDEAN:
-            # Compute distances using Euclidean distance
             distances = np.linalg.norm(self.known_embeddings - image_embedding, axis=1)
             closest_match_index = np.argmin(distances)
         elif self.distance_function == DistanceFunction.COSINE:
-            # Compute distances using cosine similarity
             distances = F.cosine_similarity(torch.tensor(self.known_embeddings), torch.tensor(image_embedding), dim=1)
             closest_match_index = torch.argmax(distances).item()
 
         return closest_match_index, distances
 
-    # def process_image_with_load(self, image_path):
-    #     # old code to load image, detect faces, align faces and extract embeddings
-    #     # Load the image
-    #     img = Image.open(image_path)
-    #     # Detect faces
-    #     boxes, _ = self.mtcnn.detect(img)
-    #     if boxes is not None:
-    #         # Align faces
-    #         aligned = self.mtcnn(img)
-    #         # Compute embeddings
-    #         embedding = self.extract_face_embeddings(aligned)
-    #         return embedding
-    #     else:
-    #         print("No faces detected in the image.")
-    #         return None
-
 
 def test_engine_with_ORL_dataset():
     dataset = ORLDataset()
+    embedding_engine = ResnetEmbeddingEngine()
 
-    embedding_engine = FaceEmbeddingEngine()
-
-    # create known embeddings fro every image class in the dataset
+    # create known embeddings fro every image class in the dataset by taking the first image of each class
     known_embeddings = []
     for i in range(40):
         embedding = embedding_engine(dataset.images[i*10])
         known_embeddings.append(embedding)
+    known_embeddings = np.array(known_embeddings)
 
     identification_engine = FaceIdentificationEngine(embedding_engine, known_embeddings=known_embeddings)
 
@@ -86,11 +76,13 @@ def test_engine_with_ORL_dataset():
     if match_index is not None:
         print(f"Closest match: Face {match_index}, Distance: {distance}")
 
-    # display distances in a histogram
-    import matplotlib.pyplot as plt
-    plt.hist(distances, bins=30)
-    plt.title('Distances to known embeddings')
-    plt.show()
+    # # display distances in a histogram
+    # import matplotlib.pyplot as plt
+    # plt.hist(distances, bins=30)
+    # plt.title('Distances to known embeddings')
+    # plt.savefig('distances_histogram.png')
+    # plt.clf() # clear the plot
+    # # plt.show()
 
 if __name__ == '__main__':
     test_engine_with_ORL_dataset()
