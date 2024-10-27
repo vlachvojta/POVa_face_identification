@@ -1,6 +1,14 @@
+import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_olivetti_faces
+
+# add current working directory + parent to path
+sys.path.append(os.getcwd())
+sys.path.append(os.path.dirname(os.getcwd()))
+
+from datasets.utils import grayscale_to_color
 
 
 class ORLDataset:
@@ -15,15 +23,18 @@ class ORLDataset:
     """
     def __init__(self):
         self.dataset = fetch_olivetti_faces()
-        self.images = self.dataset.images  # (400, 64, 64)
-        self.data = self.dataset.data      # (400, 4096)
+        self.images = self.dataset.images # (400, 64, 64)
+        self.images = grayscale_to_color(self.images, permute=True) # (400, 3, 64, 64)
         self.targets = self.dataset.target  # (400,)
         self.DESCR = self.dataset.DESCR
+
+        # data = images in 1D
+        self.data = self.dataset.data      # (400, 4096) 64*64=4096
 
     def __len__(self):
         return len(self.images)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> (np.ndarray, int):
         return self.images[idx], self.targets[idx]
 
     def save_images(self, folder_path: str):
@@ -66,10 +77,6 @@ class ORLDataset:
         print(self.DESCR)
 
 
-def main():
+if __name__ == '__main__':
     orl_dataset = ORLDataset()
     orl_dataset.print_stats()
-
-
-if __name__ == '__main__':
-    main()

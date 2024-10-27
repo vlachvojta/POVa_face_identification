@@ -88,10 +88,12 @@ class FaceIdentificationEngine:
                 if sorted(unique_classes) != sorted(unique_classes_ref):
                     print(f"Class IDs in the file {self.class_ids_file} do not match the provided target classes.")
                     print("Creating new class embeddings.")
+                    print(f'')
                     class_embeddings = None
                     class_ids = None
                 else:
                     print(f'Loaded class embeddings from {self.class_embedding_file}')
+                    print('')
 
         if class_embeddings is None or class_ids is None:
             class_embeddings, class_ids = create_class_embeddings(self.embedding_model, images, target_classes, self.class_embedding_style)
@@ -162,38 +164,21 @@ def create_class_embedding(embedding_engine: FaceEmbeddingEngine, images: list[n
         raise ValueError(f"Unknown class embedding style: {class_embedding_style}")
 
 
-def grayscale_to_color(images: list[np.ndarray], permute: bool = False) -> np.ndarray:
-    # (H, W) grayscale images to to (H, W, C)
-    images = [np.stack([image, image, image], axis=2) for image in images]
-    if permute:
-        # (H, W, C) to (C, H, W)
-        images = [np.transpose(image, (2, 0, 1)).astype(np.float32) for image in images]
-
-    return np.array(images)
-
-
 def test_engine_with_ORL_dataset():
     dataset = ORLDataset()
-    print(f'{dataset.images[0].shape = }')
-
-    orl_images_color = grayscale_to_color(dataset.images, permute=True)
-    print(f'{type(orl_images_color) = }')
-    print(f'{orl_images_color[0].shape = }')
-
     embedding_engine = ResnetEmbeddingEngine(device='cpu')
 
     # initialize face identification engine
-    targets_str = [str(target) for target in dataset.targets]
-    identification_engine = FaceIdentificationEngine(embedding_engine, orl_images_color, targets_str,
+    force_new_class_embeddings = False
+    identification_engine = FaceIdentificationEngine(embedding_engine, dataset.images, dataset.targets,
                                                      class_embedding_style=ClassEmbeddingStyle.MEAN,
-                                                     class_embedding_file='face_identification/tmp/class_embeddings.npy')
+                                                     class_embedding_file='face_identification/tmp/class_embeddings.npy',
+                                                     force_new_class_embeddings=force_new_class_embeddings)
 
     # Identify face
     test_image_index = 12
-    query_image = orl_images_color[test_image_index]
-    print(f'Testing image {test_image_index} from class {targets_str[test_image_index]}')
-
-    query_image = orl_images_color[12]
+    query_image = dataset.images[test_image_index]
+    print(f'Testing image {test_image_index} from class {dataset.targets[test_image_index]}')
     match_index, distances = identification_engine(query_image)
     distance = distances[match_index]
 
