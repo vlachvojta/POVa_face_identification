@@ -21,7 +21,8 @@ class DistanceFunction(Enum):
 
 class FaceIdentificationEngine:
     def __init__(self, embedding_model: FaceEmbeddingEngine, known_embeddings: np.ndarray,
-                 distance_function: DistanceFunction = DistanceFunction.COSINE):
+                 distance_function: DistanceFunction = DistanceFunction.COSINE,
+                 class_ids: list[str] = None):
         # TODO handle face detection (and alignment)
 
         self.embedding_model = embedding_model
@@ -32,13 +33,18 @@ class FaceIdentificationEngine:
 
         self.distance_function = distance_function
 
+        if class_ids is None:
+            class_ids = [str(i) for i in range(len(known_embeddings))]
+        assert len(class_ids) == len(known_embeddings), "Number of class IDs must match number of known embeddings."
+        self.class_ids = class_ids
+
     def __call__(self, input_image):
         if isinstance(input_image, list):
             return [self.__call__(i) for i in input_image]
 
         return self.identify_face(input_image)
 
-    def identify_face(self, image):
+    def identify_face(self, image) -> (str | None, dict[int, float] | None):
         image_embedding = self.embedding_model(image)
 
         if image_embedding is None:
@@ -52,8 +58,10 @@ class FaceIdentificationEngine:
             distances = F.cosine_similarity(torch.tensor(self.known_embeddings), torch.tensor(image_embedding), dim=1)
             closest_match_index = torch.argmax(distances).item()
 
-        return closest_match_index, distances
+        # return closest match class id and distances as a dict(key: class_id, value: distance)
+        distances = {self.class_ids[i]: distances[i].item() for i in range(len(distances))}
 
+        return self.class_ids[closest_match_index], distances
 
 def test_engine_with_ORL_dataset():
     dataset = ORLDataset()
@@ -75,6 +83,8 @@ def test_engine_with_ORL_dataset():
 
     if match_index is not None:
         print(f"Closest match: Face {match_index}, Distance: {distance}")
+
+    print(f'distances: {distances}')
 
     # # display distances in a histogram
     # import matplotlib.pyplot as plt
