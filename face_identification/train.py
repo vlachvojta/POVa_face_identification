@@ -1,5 +1,28 @@
-
 # fine-tune models given input datasets
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import models, transforms
+from pytorch_metric_learning import losses, miners
+from pytorch_metric_learning.distances import CosineSimilarity
+from torch.utils.data import Dataset, DataLoader
+
+
+    # ArcFace Loss with Cosine Similarity
+    loss_func = losses.ArcFaceLoss(
+        num_classes=len(train_loader.dataset.labels.unique()),
+        embedding_size=512,
+        margin=0.5,
+        scale=64,
+        distance=CosineSimilarity()  # default and only one
+    )
+
+
+
+
+
 
 class Evaluator:
     ...
