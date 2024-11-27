@@ -4,3 +4,4 @@ facenet-pytorch
 matplotlib
 pillow
 scikit-learn
+pytorch_metric_learning
