@@ -2,10 +2,15 @@
 POVa project (Computer Vision) at FIT (B|V)UT. 2024/2025 winter semestr
 
 ## Questions for 27.11. meeting
-- [ ] dataset: specific subset, phone dataset, historical?
-- [ ] facial detection upgrade?
-- [ ] demo app?
-- [ ] who does what?
+- [x] dataset: 
+      - specific subset - celebA, TODO find a good descriptor
+      - (phone dataset, historical?)
+- [x] facial detection upgrade? NOP. It's good.
+- [x] demo app? - Martin will create a skeleton
+- [x] who does what?
+      - Vojta: training
+      - Martin: data
+      - Zuzka: detection engine
 
 ## TODOs
 - [x] research existing datasets [Martin]
