@@ -1,22 +1,24 @@
 # POVa_face_identification
 POVa project (Computer Vision) at FIT (B|V)UT. 2024/2025 winter semestr
 
-## Proposal
-- [ ] paper (článek)
- - outline your experiments including datasets and evaluation metrics
-- [ ] evaluation style and results with baseline
+## Questions for 27.11. meeting
+- [ ] dataset: specific subset, phone dataset, historical?
+- [ ] facial detection upgrade?
+- [ ] demo app?
+- [ ] who does what?
 
 ## TODOs
 - [x] research existing datasets [Martin]
-  - [ ] labeled faces in the wild (13 000 images, 5749 lidí (1680 lidí s dvěma a více fotkama))
-  - [ ] (CASIA web-Face)
-- [ ] facial detection [Zuzka]
+  - [x] labeled faces in the wild (13 000 images, 5749 lidí (1680 lidí s dvěma a více fotkama))
+  - [x] (CASIA web-Face)
+  - chosen CelebA
+- [x] facial detection [Zuzka]
   - [x] find and test a few existing approaches
   - chosen DLib
-  - [ ] ~~OpenCV, MTCNN~~
-  - [ ] evaluation on existing dataset
+  - [x] ~~OpenCV, MTCNN~~
+  - [x] testing on existing dataset
 - [ ] facial recognition / identification  [Vojta]
-  - [ ] evaluation of existing models
+  - [x] evaluation of existing models (code is ready)
   - [ ] fine-tuning (training on a new task)
 
 - [ ] demo app
@@ -42,6 +44,11 @@ Sources:
 - http://www.robots.ox.ac.uk/~vgg/software/vgg_face/
 
 ## Proposal Feedback
+**TLDR**
+- create your own dataset with 10 people with a phone. Fine-tune model using similar augmentations.
+- pytorch-metric-learning + ArcFaceLoss
+- pretrained models CLIP (OpenAI), hugging face, ...
+
 Dear students,
 
 in general, the proposal makes sense. However I have some questions and remarks.
@@ -54,3 +61,9 @@ in general, the proposal makes sense. However I have some questions and remarks.
 
 Regards,
 Michal Hradiš
+
+## DONE
+### Proposal
+- [x] paper (článek)
+ - outline your experiments including datasets and evaluation metrics
+- [x] evaluation style and results with baseline
