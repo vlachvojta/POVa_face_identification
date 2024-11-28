@@ -9,18 +9,22 @@ class FaceDetectionEngine:
 		self.device = device
 		self.model = MTCNN(keep_all=keep_all, device=self.device)
   
-	def __call__ (self, image_path, output_path=None):
-		image = Image.open(image_path)
-		boxes, _ = self.model.detect(image)
-        
-		image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+	def __call__ (self, image):
+     
+		boxes, probs, landmarks = self.model.detect(image, landmarks=True)
+		results = []
 
 		if boxes is not None:
-			for box in boxes:
-				x1, y1, x2, y2 = map(int, box)
-				cv2.rectangle(image_cv, (x1, y1), (x2, y2), (0, 255, 0), 2)
+			for box, landmark in zip(boxes, landmarks):
+				results.append({
+					"box": box.tolist(),
+					"landmarks": landmark.tolist()
+				})
         
-		if output_path:
-			cv2.imwrite(output_path, image_cv)
-        
-		return boxes if boxes is not None else []
+		return results
+
+if __name__ == "__main__":
+    face_detector = FaceDetectionEngine('cpu', True)
+    image = Image.open('lorelai.webp')
+    result = face_detector(image)
+    print("Detection results:", result)
