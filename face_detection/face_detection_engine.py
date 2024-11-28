@@ -22,9 +22,3 @@ class FaceDetectionEngine:
 				})
         
 		return results
-
-if __name__ == "__main__":
-    face_detector = FaceDetectionEngine('cpu', True)
-    image = Image.open('lorelai.webp')
-    result = face_detector(image)
-    print("Detection results:", result)
