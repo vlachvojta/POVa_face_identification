@@ -4,9 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_olivetti_faces
 
-# add current working directory + parent to path
-sys.path.append(os.getcwd())
-sys.path.append(os.path.dirname(os.getcwd()))
+# add parent of this file to path to enable importing
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.utils import grayscale_to_color
 
@@ -35,7 +34,7 @@ class ORLDataset:
     def __len__(self):
         return len(self.images)
 
-    def __getitem__(self, idx) -> (np.ndarray, int):
+    def __getitem__(self, idx) -> tuple[np.ndarray, int]:
         return self.images[idx], self.targets[idx]
 
     def save_images(self, folder_path: str):

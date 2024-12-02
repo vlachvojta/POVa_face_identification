@@ -4,7 +4,7 @@ import argparse
 import customtkinter as ctk
 from PIL import ImageDraw
 
-
+# add parent of this file to path to enable importing
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from datasets.data_loader import DataLoader

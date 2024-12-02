@@ -7,9 +7,8 @@ import numpy as np
 from enum import Enum
 from dataclasses import dataclass
 
-# add current working directory + parent to path
-sys.path.append(os.getcwd())
-sys.path.append(os.path.dirname(os.getcwd()))
+# add parent of this file to path to enable importing
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.ORL_dataset import ORLDataset
 from face_identification.face_embedding_engine import FaceEmbeddingEngine, ResnetEmbeddingEngine

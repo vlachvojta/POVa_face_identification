@@ -5,17 +5,23 @@ import numpy as np
 from PIL import Image
 import torch
 import torch.nn.functional as F
-from facenet_pytorch import MTCNN, InceptionResnetV1
+from facenet_pytorch import InceptionResnetV1
 
-# add current working directory + parent to path
-sys.path.append(os.getcwd())
-sys.path.append(os.path.dirname(os.getcwd()))
+# add parent of this file to path to enable importing
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.ORL_dataset import ORLDataset
 
 
 class FaceEmbeddingEngine:
-    DIM = 42  # Change this to the dimension of the face embeddings in every subclass
+    """All face embedding engines should inherit from this class and then:
+      - implement extract_face_embeddings method
+      - have a __init__ method that initializes the model
+      - have self.model attribute (should be a torch model)
+    """
+    def __init__(self, verbose: bool = True):
+        self.verbose = verbose
+
     def __call__(self, input_image):
         if isinstance(input_image, list):
             return [self.__call__(i) for i in input_image]
@@ -23,23 +29,25 @@ class FaceEmbeddingEngine:
         if isinstance(input_image, str):
             input_image = self.open_image(input_image)
 
-        return self.extract_face_embeddings(input_image)
+        embedding = self.extract_face_embeddings(input_image)  # all face embedding engines should implement this method
+
+        if self.verbose:
+            print(f'{self.__class__.__name__}.{self.model.__class__.__name__}({input_image.shape}) -> {embedding.shape}')
+
+        return embedding
 
     def open_image(self, image_path: str) -> np.ndarray:
         return np.array(Image.open(image_path))
-
-    # All face embedding engines should implement this method:
-    # def extract_face_embeddings(self, image: np.ndarray):
-    #     ...
 
 
 class ResnetEmbeddingEngine(FaceEmbeddingEngine):
     INPUT_PIXELS = 160
     DIM = 512
 
-    def __init__(self, model_name: str = 'vggface2', device: str = 'cuda'):
-        # so far tested models: 'vggface2', 'casia-webface'
+    def __init__(self, model_name: str = 'vggface2', device: str = 'cuda', **kwargs):
+        super().__init__()
         self.model = InceptionResnetV1(pretrained=model_name).eval().to(device)
+        # so far tested models: 'vggface2', 'casia-webface'
         self.device = device
 
     def extract_face_embeddings(self, image: np.ndarray):
@@ -57,9 +65,48 @@ class ResnetEmbeddingEngine(FaceEmbeddingEngine):
 
         # resize image to input_pixels
         image = F.interpolate(image, size=(self.INPUT_PIXELS, self.INPUT_PIXELS), mode='bilinear', align_corners=False)
-
         embedding = self.model(image).detach().cpu().numpy()
-        print(f'embedding image {image.shape} -> {embedding.shape}')
+
         if return_first:
             return embedding[0]
         return embedding
+
+
+def example_usage_one_image():
+    import matplotlib.pyplot as plt
+    engine = ResnetEmbeddingEngine(verbose=False)
+    dataset = ORLDataset()
+
+    # test the engine with one image
+    image = dataset[0][0]
+    print(f'image shape: {image.shape}')
+    embedding = engine(image)
+    print(f'embedding shape: {embedding.shape}')
+    
+    # show image
+    plt.imshow(image.transpose(1, 2, 0))
+    plt.show()
+
+
+def example_usage_batch_images():
+    import matplotlib.pyplot as plt
+    engine = ResnetEmbeddingEngine(verbose=False)
+    dataset = ORLDataset()
+
+    # test the engine with multiple images (batch)
+    first_five_images = dataset.images[:5]
+    print(f'image batch shape: {first_five_images.shape}')
+    embedding = engine(first_five_images)
+    print(f'embedding batch shape: {embedding.shape}')
+
+    # show images
+    fig, axs = plt.subplots(1, 5, figsize=(15, 6))
+    for i, ax in enumerate(axs.flatten()):
+        ax.imshow(first_five_images[i].transpose(1, 2, 0))
+        ax.axis('off')
+    plt.show()
+
+
+if __name__ == '__main__':
+    example_usage_one_image()
+    example_usage_batch_images()
