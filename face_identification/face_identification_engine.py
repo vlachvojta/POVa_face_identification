@@ -64,7 +64,7 @@ class FaceIdentificationEngine:
 
         return self.identify_face(input_image)
 
-    def identify_face(self, image) -> (str | None, dict[int, float] | None):
+    def identify_face(self, image) -> tuple[str | None, dict[int, float] | None]:
         image_embedding = self.embedding_model(image)
 
         if image_embedding is None:
@@ -83,7 +83,7 @@ class FaceIdentificationEngine:
 
         return self.class_ids[closest_match_index], distances
 
-    def load_or_create_class_embeddings(self, images: list[np.ndarray], target_classes: list[str]) -> (np.ndarray, list[str]):
+    def load_or_create_class_embeddings(self, images: list[np.ndarray], target_classes: list[str]) -> tuple[np.ndarray, list[str]]:
         class_embeddings = None
         class_ids = None
 
