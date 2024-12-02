@@ -3,23 +3,17 @@ import sys
 import logging
 import argparse
 import time
-# import random
-from typing import Optional
-from collections import defaultdict
 import json
 import re
 
-import numpy as np
 import torch
-import cv2
 from pytorch_metric_learning import losses, miners
 from pytorch_metric_learning.distances import CosineSimilarity
-# from clearml import Task
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datasets.data_loader import DataLoader as CelebADataLoader
+from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
 from datasets.data_loader import Partition
 from face_detection.face_detection_engine import FaceDetectionEngine
 from face_identification.face_embedding_models import FacenetPytorchWrapper, NetUtils
@@ -70,12 +64,15 @@ def main():
     logging.info(args)
     # logging.getLogger("cv2").setLevel(level=logging.ERROR)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     logging.info(f"Running on: {device}")
 
     logging.info("Loading datasets ...")  # TODO put this back on after testing
-    trn_dataset = CelebADataLoader(args.dataset_path, partition=Partition.TRAIN)
-    val_dataset = CelebADataLoader(args.dataset_path, partition=Partition.VAL, limit=100)
+    trn_dataset = CelebADataLoader(
+        args.dataset_path, partition=Partition.TRAIN, sequential_classes=True)
+    val_dataset = CelebADataLoader(
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, limit=100)
     logging.info(f"Train dataset:      {len(trn_dataset)} samples")
     logging.info(f"Validation dataset: {len(val_dataset)} samples")
 
@@ -103,8 +100,9 @@ def main():
             val_dataloaders=val_dataloaders,
             max_iter=args.max_iter,
             view_step=args.view_step,
-            render=args.render,
             monitor=monitor,
+            output_path=args.output_path,
+            render=args.render,
             trained_steps=trained_steps,
         )
         logging.info("Training finished.")
@@ -124,10 +122,12 @@ def train(
     max_iter: int,
     view_step: int,
     monitor: TrainingMonitor,
+    output_path: str,
     render: bool=False,
     trained_steps: int=0,
 ):
     logging.info(f"Training on {len(trn_dataloader.dataset)} samples. with unique classes {len(trn_dataloader.dataset.unique_classes())}")
+
     # ArcFace Loss with Cosine Similarity
     criterion = losses.ArcFaceLoss(
         num_classes=len(trn_dataloader.dataset.unique_classes()),
@@ -136,98 +136,74 @@ def train(
         scale=64,
         distance=CosineSimilarity()
     ).to(device)
+
+    miner = miners.TripletMarginMiner(
+        margin=0.2,
+        type_of_triplets='hard'
+    )
+
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     iteration = trained_steps
-
     train_losses = []
-
     t1 = time.time()
 
-    print(f'exiting'); exit(0)
-
-    
     for batch_data in trn_dataloader:
+        iteration += 1
         if iteration > max_iter:
             break
 
         model.train()
-        pages_seen += batch_data["bbox"].size()[0]
 
-        iteration += 1
+        images = batch_data["image"].to(device).float()
+        classes = batch_data["class"].to(device)
 
-        bboxes = batch_data["bbox"].to(device)
-        query_types = batch_data["query_type"].to(device)
-        gt_bbox = batch_data["gt_bbox"].to(device)
-        images = None
-        mask = gt_bbox != -1
-        
-        if model.config.use_img_input:
-            images = batch_data["image"].to(device)
+        # print(f'images.shape: {images.shape}')
+        embeddings = model(images)
+        # print('embeddings.shape:', embeddings.shape)
 
+        hard_pairs = miner(embeddings, classes)
+
+        loss = criterion(embeddings, classes, hard_pairs)
+
+        # Backpropagation
         optimizer.zero_grad()
-
-        pred, _ = model(
-            x=bboxes,
-            images=images,
-            query_types=query_types,
-        )
-        loss = criterion(pred, gt_bbox)
-        # aggregated_loss = aggregate_loss(loss, mask, loss_aggregation)
-        # loss = aggregated_loss.mean()
         loss.backward()
         optimizer.step()
+        train_losses.append(loss.item())
 
-        train_losses.extend(loss.tolist())
-
-        # Compute prediction accuracy, but ignore the -1 labels
-        pred_labels = torch.argmax(pred, dim=1)
-        bboxes_seen += torch.sum(mask).item()
-        bboxes_predicted_right += torch.sum(pred_labels[mask] == gt_bbox[mask]).item()
-
-        # Page accuracy
-        page_predictions = (pred_labels == gt_bbox) & mask
-        correct_per_page = torch.sum(page_predictions, dim=1)
-        valid_bboxes_per_page = torch.sum(mask, dim=1)
-        page_acc = correct_per_page / valid_bboxes_per_page
-        page_accuracies.extend(page_acc.tolist())
-
+        # print(f'exiting'); exit(0)
         if iteration % view_step == 0:
             t2 = time.time()
-            assert len(page_accuracies) == pages_seen
 
             monitor.iterations.append(iteration)
             monitor.add_value(f"train_loss", sum(train_losses) / len(train_losses))
-            monitor.add_value("train_acc_region", bboxes_predicted_right / bboxes_seen)
-            monitor.add_value("train_acc_page", sum(page_accuracies) / pages_seen)
 
             train_losses = []
-            page_accuracies = []
-            bboxes_predicted_right = 0
-            bboxes_seen = 0
-            pages_seen = 0
 
-            for val_name, val_data_loader in val_dataloaders.items():
-                validate(
-                    model=model,
-                    data_loader=val_data_loader,
-                    data_loader_name=val_name,
-                    criterion=criterion,
-                    device=device,
-                    monitor=monitor,
-                    # loss_aggregation=loss_aggregation,
-                    render=render,
-                    # max_test_samples=max_test_samples,
-                )
+            # TODO add validation
+            # for val_name, val_data_loader in val_dataloaders.items():
+            #     validate(
+            #         model=model,
+            #         data_loader=val_data_loader,
+            #         data_loader_name=val_name,
+            #         criterion=criterion,
+            #         device=device,
+            #         monitor=monitor,
+            #         # loss_aggregation=loss_aggregation,
+            #         render=render,
+            #         # max_test_samples=max_test_samples,
+            #     )
 
             monitor.add_value("view_time", t2 - t1)
             log_string = monitor.get_last_string()
             print(f"{log_string}")
 
-            torch.save(model.state_dict(), "./last.pth")
+            save_model(model, output_path, iteration)
+            # torch.save(model.state_dict(), "./last.pth")
             
             monitor.report_results()
-            monitor.save_csv(".")
+            monitor.save_csv(output_path)
             t1 = time.time()
 
 

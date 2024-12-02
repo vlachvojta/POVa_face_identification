@@ -19,5 +19,5 @@ python train.py \
     --config $output_path/config.json \
     --render \
     --max-iter 1000 \
-    --view-step 100 \
-    --batch-size 64 \
+    --view-step 5 \
+    --batch-size 32 \
