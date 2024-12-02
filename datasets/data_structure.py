@@ -6,6 +6,9 @@ class ImageData:
         self.image = None
         self.attributes = Attributes(**attributes)
 
+    def __str__(self):
+        return f"Image {self.filename} (ID: {self.id}, partition: {self.partition}) attributes: {self.attributes()}"
+
 class Attributes:
     def __init__(self, **kwargs):
         kwargs = {key: value == '1' for key, value in kwargs.items()}
