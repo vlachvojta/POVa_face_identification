@@ -1,0 +1,64 @@
+import os
+from collections import defaultdict
+from typing import Optional
+
+from clearml import Task
+
+class TrainingMonitor:
+    def __init__(
+        self,
+        name: Optional[str]=None,
+        project_name: Optional[str]=None,
+    ):
+        self.iterations: list[int] = []
+        self.values: dict[str, list[float]] = defaultdict(list)
+
+        self.name = name if name is not None else "training"
+        self.project_name = project_name
+        self.log_name = f"{self.project_name}_{self.name}" if self.project_name is not None else self.name
+
+        self.task = Task.init(project_name=project_name, task_name=name, continue_last_task=True) if project_name is not None else None
+
+    def add_value(
+        self,
+        key: str,
+        value: float,
+    ) -> None:
+        self.values[key].append(value)
+        if self.task is not None:
+            series, title = key.split("_", 1)
+            self.task.logger.report_scalar(title=title, series=series, value=value, iteration=self.iterations[-1])
+
+    def report_results(self, digits: int=4) -> None:
+        if self.task is None:
+            return
+
+        for k, v in self.values.items():
+            if "loss" in k:
+                self.task.logger.report_single_value(k, round(min(v), digits))
+            elif "acc" in k:
+                self.task.logger.report_single_value(k, round(max(v), digits))
+            else:
+                continue
+
+    def save_csv(self, path: str, ) -> None:
+        p = os.path.join(path, f"{self.log_name}.csv")
+        with open(p, "w") as f_csv:
+            keys = sorted(list(self.values.keys()))
+            f_csv.write("iteration," + ",".join(keys) + "\n")
+            for i, it in enumerate(self.iterations):
+                f_csv.write(f"{it}," + ",".join([str(self.values[k][i]) for k in keys]) + "\n")
+
+    # def load_from_csv(self, path: str) -> None:
+    #     p = os.path.join(path, f"{self.log_name}.csv")
+    #     with open(p, "r") as f_csv:
+    #         lines = f_csv.readlines()
+    #         keys = lines[0].strip().split(",")[1:]
+    #         for line in lines[1:]:
+    #             parts = line.strip().split(",")
+    #             self.iterations.append(int(parts[0]))
+    #             for i, k in enumerate(keys):
+    #                 self.values[k].append(float(parts[i+1]))
+
+    def get_last_string(self):
+        return f"ITER {self.iterations[-1]} " + " ".join([f"{k} {v[-1]:.4f}" for k, v in self.values.items()])
