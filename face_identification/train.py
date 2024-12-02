@@ -12,6 +12,8 @@ import re
 import numpy as np
 import torch
 import cv2
+from pytorch_metric_learning import losses, miners
+from pytorch_metric_learning.distances import CosineSimilarity
 # from clearml import Task
 
 # add parent of this file to path to enable importing
@@ -26,13 +28,6 @@ from face_identification.training_monitor import TrainingMonitor
 from common import utils
 
 logging.basicConfig(level=logging.DEBUG)
-
-# from organizer.image_backbone import ImageBackbone
-# from organizer.dataset import LayoutDataset
-# from organizer.model import MultimodalLayoutTransformerConfig, MultimodalLayoutTransformer
-# from organizer.augmentation import OnlineBBoxAugmentor
-# from organizer.utils import find_shortest_path, render_reading_order, transform_order_to_successor
-
 
 
 def parse_arguments():
@@ -84,20 +79,17 @@ def main():
     logging.info(f"Train dataset:      {len(trn_dataset)} samples")
     logging.info(f"Validation dataset: {len(val_dataset)} samples")
 
-    trn_data_loader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=4)
+    trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=4)
 
-    val_data_loaders = {
+    val_dataloaders = {
         # 'trn': torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2),
         'val': torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2)
     }
 
     model, trained_steps = load_model(args.output_path)
     model = model.to(device)
-    model.train()
     learnable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logging.debug(f'learnable parameters: {learnable_params}')
-
-    print(f'exiting'); exit(0)
 
     logging.info("Starting training ...")
     monitor = TrainingMonitor(name=args.name, project_name=args.project_name)
@@ -107,14 +99,13 @@ def main():
             device=device,
             lr=args.lr,
             weight_decay=args.weight_decay,
-            train_dataloader=trn_data_loader,
-            val_data_loaders=val_data_loaders,
+            trn_dataloader=trn_dataloader,
+            val_dataloaders=val_dataloaders,
             max_iter=args.max_iter,
             view_step=args.view_step,
-            # loss_aggregation=args.loss_aggregation,
             render=args.render,
             monitor=monitor,
-            # max_test_samples=args.max_test_samples,
+            trained_steps=trained_steps,
         )
         logging.info("Training finished.")
     except KeyboardInterrupt:
@@ -126,113 +117,118 @@ def main():
 def train(
     model: torch.nn.Module,
     device: torch.device,
-    train_dataloader: torch.utils.data.DataLoader,
-    val_data_loaders: dict[str, torch.utils.data.DataLoader],
+    trn_dataloader: torch.utils.data.DataLoader,
+    val_dataloaders: dict[str, torch.utils.data.DataLoader],
     lr: float,
     weight_decay: float,
     max_iter: int,
     view_step: int,
     monitor: TrainingMonitor,
-    # loss_aggregation: str,
     render: bool=False,
-    # max_test_samples: int=None,
+    trained_steps: int=0,
 ):
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=-1, reduction="none").to(device)
+    logging.info(f"Training on {len(trn_dataloader.dataset)} samples. with unique classes {len(trn_dataloader.dataset.unique_classes())}")
+    # ArcFace Loss with Cosine Similarity
+    criterion = losses.ArcFaceLoss(
+        num_classes=len(trn_dataloader.dataset.unique_classes()),
+        embedding_size=512,
+        margin=0.5,
+        scale=64,
+        distance=CosineSimilarity()
+    ).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    iteration = 0
-    bboxes_seen = 0
-    pages_seen = 0
-    bboxes_predicted_right = 0
+    iteration = trained_steps
 
-    page_accuracies = []
-    train_loss = []
+    train_losses = []
 
     t1 = time.time()
 
-    for epoch in range(10000):
+    print(f'exiting'); exit(0)
+
+    
+    for batch_data in trn_dataloader:
         if iteration > max_iter:
             break
-        for batch_data in train_dataloader:
-            if iteration > max_iter:
-                break
-            pages_seen += batch_data["bbox"].size()[0]
 
-            iteration += 1
+        model.train()
+        pages_seen += batch_data["bbox"].size()[0]
 
-            bboxes = batch_data["bbox"].to(device)
-            query_types = batch_data["query_type"].to(device)
-            gt_bbox = batch_data["gt_bbox"].to(device)
-            images = None
-            mask = gt_bbox != -1
+        iteration += 1
+
+        bboxes = batch_data["bbox"].to(device)
+        query_types = batch_data["query_type"].to(device)
+        gt_bbox = batch_data["gt_bbox"].to(device)
+        images = None
+        mask = gt_bbox != -1
+        
+        if model.config.use_img_input:
+            images = batch_data["image"].to(device)
+
+        optimizer.zero_grad()
+
+        pred, _ = model(
+            x=bboxes,
+            images=images,
+            query_types=query_types,
+        )
+        loss = criterion(pred, gt_bbox)
+        # aggregated_loss = aggregate_loss(loss, mask, loss_aggregation)
+        # loss = aggregated_loss.mean()
+        loss.backward()
+        optimizer.step()
+
+        train_losses.extend(loss.tolist())
+
+        # Compute prediction accuracy, but ignore the -1 labels
+        pred_labels = torch.argmax(pred, dim=1)
+        bboxes_seen += torch.sum(mask).item()
+        bboxes_predicted_right += torch.sum(pred_labels[mask] == gt_bbox[mask]).item()
+
+        # Page accuracy
+        page_predictions = (pred_labels == gt_bbox) & mask
+        correct_per_page = torch.sum(page_predictions, dim=1)
+        valid_bboxes_per_page = torch.sum(mask, dim=1)
+        page_acc = correct_per_page / valid_bboxes_per_page
+        page_accuracies.extend(page_acc.tolist())
+
+        if iteration % view_step == 0:
+            t2 = time.time()
+            assert len(page_accuracies) == pages_seen
+
+            monitor.iterations.append(iteration)
+            monitor.add_value(f"train_loss", sum(train_losses) / len(train_losses))
+            monitor.add_value("train_acc_region", bboxes_predicted_right / bboxes_seen)
+            monitor.add_value("train_acc_page", sum(page_accuracies) / pages_seen)
+
+            train_losses = []
+            page_accuracies = []
+            bboxes_predicted_right = 0
+            bboxes_seen = 0
+            pages_seen = 0
+
+            for val_name, val_data_loader in val_dataloaders.items():
+                validate(
+                    model=model,
+                    data_loader=val_data_loader,
+                    data_loader_name=val_name,
+                    criterion=criterion,
+                    device=device,
+                    monitor=monitor,
+                    # loss_aggregation=loss_aggregation,
+                    render=render,
+                    # max_test_samples=max_test_samples,
+                )
+
+            monitor.add_value("view_time", t2 - t1)
+            log_string = monitor.get_last_string()
+            print(f"{log_string}")
+
+            torch.save(model.state_dict(), "./last.pth")
             
-            if model.config.use_img_input:
-                images = batch_data["image"].to(device)
-
-            optimizer.zero_grad()
-
-            pred, _ = model(
-                x=bboxes,
-                images=images,
-                query_types=query_types,
-            )
-            loss = criterion(pred, gt_bbox)
-            # aggregated_loss = aggregate_loss(loss, mask, loss_aggregation)
-            # loss = aggregated_loss.mean()
-            loss.backward()
-            optimizer.step()
-
-            train_loss.extend(loss.tolist())
-
-            # Compute prediction accuracy, but ignore the -1 labels
-            pred_labels = torch.argmax(pred, dim=1)
-            bboxes_seen += torch.sum(mask).item()
-            bboxes_predicted_right += torch.sum(pred_labels[mask] == gt_bbox[mask]).item()
-
-            # Page accuracy
-            page_predictions = (pred_labels == gt_bbox) & mask
-            correct_per_page = torch.sum(page_predictions, dim=1)
-            valid_bboxes_per_page = torch.sum(mask, dim=1)
-            page_acc = correct_per_page / valid_bboxes_per_page
-            page_accuracies.extend(page_acc.tolist())
-
-            if iteration % view_step == 0:
-                t2 = time.time()
-                assert len(page_accuracies) == pages_seen
-
-                monitor.iterations.append(iteration)
-                monitor.add_value(f"train_loss", sum(train_loss) / len(train_loss))
-                monitor.add_value("train_acc_region", bboxes_predicted_right / bboxes_seen)
-                monitor.add_value("train_acc_page", sum(page_accuracies) / pages_seen)
-
-                train_loss = []
-                page_accuracies = []
-                bboxes_predicted_right = 0
-                bboxes_seen = 0
-                pages_seen = 0
-
-                for val_name, val_data_loader in val_data_loaders.items():
-                    validate(
-                        model=model,
-                        data_loader=val_data_loader,
-                        data_loader_name=val_name,
-                        criterion=criterion,
-                        device=device,
-                        monitor=monitor,
-                        # loss_aggregation=loss_aggregation,
-                        render=render,
-                        # max_test_samples=max_test_samples,
-                    )
-
-                monitor.add_value("view_time", t2 - t1)
-                log_string = monitor.get_last_string()
-                print(f"{log_string}")
-
-                torch.save(model.state_dict(), "./last.pth")
-                
-                monitor.report_results()
-                monitor.save_csv(".")
-                t1 = time.time()
+            monitor.report_results()
+            monitor.save_csv(".")
+            t1 = time.time()
 
 
 def validate(

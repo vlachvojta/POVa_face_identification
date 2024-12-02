@@ -17,6 +17,7 @@ python train.py \
     --dataset-path ../../datasets/CelebA/ \
     --output-path $OUTPUT_PATH \
     --config $output_path/config.json \
+    --render \
     --max-iter 1000 \
     --view-step 100 \
     --batch-size 64 \

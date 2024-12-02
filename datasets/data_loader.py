@@ -37,4 +37,6 @@ class DataLoader:
         # Open image and return the whole object
         self.data[index].image = Image.open(f"{self.data_path}/Img/img_align_celeba/{self.data[index].filename}")
         return self.data[index]
-    
+
+    def unique_classes(self):
+        return set(item.id for item in self.data)
