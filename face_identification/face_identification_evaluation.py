@@ -1,10 +1,6 @@
 import os
 import sys
-import torch
-import torch.nn.functional as F
-from PIL import Image
 import numpy as np
-from enum import Enum
 from dataclasses import dataclass
 
 # add parent of this file to path to enable importing
@@ -45,12 +41,15 @@ class ClassStat:
     def __str__(self):
         if self.total == 0:
             return 'No hits or misses.'
-        return f'{self.hits / self.total * 100:.2f}% ({self.hits}/{self.total})'
+
+        percentage = f'{self.hits / self.total * 100:.2f}%'
+        return f'{percentage:<7} ({self.hits}/{self.total})'
 
 
 class FaceIdentificationEvaluation:
-    def __init__(self, identification_engine: FaceIdentificationEngine):
+    def __init__(self, identification_engine: FaceIdentificationEngine, print_interval: int = 10):
         self.identification_engine = identification_engine
+        self.print_interval = print_interval
 
         # default int dict for class hits
         self.class_hits = {}
@@ -64,7 +63,7 @@ class FaceIdentificationEvaluation:
         self.top_10_hit = 0
 
         self.reverse_ranking = distance_criterium_is_max(identification_engine.distance_function)
-    
+
     def __call__(self, images, target_classes: list[str]):
         # TODO: add support for batch processing
         assert len(images) == len(target_classes), "Number of images must match number of class IDs."
@@ -73,7 +72,7 @@ class FaceIdentificationEvaluation:
         self.top_n_hits = np.zeros(len(self.class_hits), dtype=int)
 
         for i, (image, target_class) in enumerate(zip(images, target_classes)):
-            if i and i % 10 == 0:
+            if i and i % self.print_interval == 0:
                 print(f'Processed {i}/{len(images)} images.')
                 self.print_stats()
                 print('')
@@ -84,7 +83,7 @@ class FaceIdentificationEvaluation:
                 continue
 
             match_class, distances = self.identification_engine(image)
-            match_class_distance = distances[match_class]
+            # match_class_distance = distances[match_class]
             # print(f'Match class: {match_class} with distance: {match_class_distance}')
             # print(f'all distances: {distances}')
 
@@ -104,16 +103,19 @@ class FaceIdentificationEvaluation:
         print(f'Target hits: {self.target_hit/self.processed*100:.2f}% ({self.target_hit}/{self.processed})')
         print(f'Skipped: {self.skipped}')
 
-        print(f'Top N hits:')
+        print(f'Top N hits: (target class is in top N classes according to distance)')
         for top_n in [1, 2, 3, 5]:
             if len(self.top_n_hits) >= top_n:
                 hits = self.top_n_hits[top_n-1]
-                print(f'\ttop_{top_n}: {hits/self.processed*100:.2f}% ({hits}/{self.processed})')
+                percentage = f'{hits/self.processed*100:.2f}%'
+                print(f'\ttop_{top_n}: {percentage:<7} ({hits}/{self.processed})')
 
         print(f'Class hits:')
-        for class_id, class_stat in self.class_hits.items():
+        for class_id in sorted(self.class_hits, key=lambda x: int(x)):
+            class_stat = self.class_hits[class_id]
             if class_stat.total > 0:
-                print(f'\t{class_id}: {class_stat}')
+                class_id_text = f'{class_id}:'
+                print(f'\t{class_id_text:>8} {class_stat}')
 
         print('')
 
@@ -130,16 +132,15 @@ class FaceIdentificationEvaluation:
 
 def test_evaluation_with_ORL_dataset():
     dataset = ORLDataset()
-    embedding_engine = ResnetEmbeddingEngine(device='cpu')
+    embedding_engine = ResnetEmbeddingEngine(device='cpu', verbose=False)
 
     # initialize face identification engine
-    force_new_class_embeddings = False
     identification_engine = FaceIdentificationEngine(embedding_engine, dataset.images, dataset.targets,
                                                      class_embedding_style=ClassEmbeddingStyle.MEAN,
-                                                     class_embedding_file='face_identification/tmp/class_embeddings.npy',
-                                                     force_new_class_embeddings=force_new_class_embeddings)
+                                                     class_embedding_file='tmp/class_embeddings.npy',
+                                                     force_new_class_embeddings=False)
 
-    evaluation = FaceIdentificationEvaluation(identification_engine)
+    evaluation = FaceIdentificationEvaluation(identification_engine, print_interval=10)
 
     evaluation(dataset.images, dataset.targets)
 

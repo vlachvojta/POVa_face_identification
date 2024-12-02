@@ -32,7 +32,7 @@ class FaceEmbeddingEngine:
         embedding = self.extract_face_embeddings(input_image)  # all face embedding engines should implement this method
 
         if self.verbose:
-            print(f'{self.__class__.__name__}.{self.model.__class__.__name__}({input_image.shape}) -> {embedding.shape}')
+            print(f'{self.__class__.__name__}.{self.model.__class__.__name__}: {input_image.shape} -> {embedding.shape}')
 
         return embedding
 
@@ -45,7 +45,7 @@ class ResnetEmbeddingEngine(FaceEmbeddingEngine):
     DIM = 512
 
     def __init__(self, model_name: str = 'vggface2', device: str = 'cuda', **kwargs):
-        super().__init__()
+        super().__init__(**kwargs)
         self.model = InceptionResnetV1(pretrained=model_name).eval().to(device)
         # so far tested models: 'vggface2', 'casia-webface'
         self.device = device
@@ -74,7 +74,7 @@ class ResnetEmbeddingEngine(FaceEmbeddingEngine):
 
 def example_usage_one_image():
     import matplotlib.pyplot as plt
-    engine = ResnetEmbeddingEngine(verbose=False)
+    engine = ResnetEmbeddingEngine()
     dataset = ORLDataset()
 
     # test the engine with one image
@@ -90,7 +90,7 @@ def example_usage_one_image():
 
 def example_usage_batch_images():
     import matplotlib.pyplot as plt
-    engine = ResnetEmbeddingEngine(verbose=False)
+    engine = ResnetEmbeddingEngine()
     dataset = ORLDataset()
 
     # test the engine with multiple images (batch)
