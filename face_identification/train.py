@@ -3,16 +3,20 @@ import sys
 import logging
 import argparse
 import time
-import random
+# import random
 from typing import Optional
+from collections import defaultdict
 
+import numpy as np
 import torch
 import cv2
-import numpy as np
-from collections import defaultdict
+from clearml import Task
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from datasets.data_loader import DataLoader
+from face_detection.face_detection_engine import FaceDetectionEngine
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -22,7 +26,6 @@ logging.basicConfig(level=logging.DEBUG)
 # from organizer.augmentation import OnlineBBoxAugmentor
 # from organizer.utils import find_shortest_path, render_reading_order, transform_order_to_successor
 
-from clearml import Task
 
 
 def parse_arguments():
@@ -35,6 +38,7 @@ def parse_arguments():
 
     # Data paths
     parser.add_argument("-d", "--dataset-path", required=True, type=str, help="Path to the dataset folder.")
+    parser.add_argument("-o", "--output-path", required=True, type=str, help="Path to the output folder.")
     parser.add_argument("--config", type=str, default=None, help="Path to model config")
     parser.add_argument("--render", action="store_true", help="Render validation samples.")
 
@@ -59,25 +63,20 @@ def parse_arguments():
 
 
 def main():
+    # this is a script taken from the layout organizer project but now I am modifying it to work with the face identification project
     args = parse_arguments()
     logging.info(args)
 
     # logging.getLogger("cv2").setLevel(level=logging.ERROR)
 
-    # if args.seed is not None:
-    #     logging.debug(f"Settings random seed to {args.seed}")
-    #     random.seed(args.seed)
-    #     np.random.seed(args.seed)
-    #     torch.manual_seed(args.seed)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Running on: {device}")
 
-    # bbox_augmentor = None
-    # if args.augment_bboxes:
-    #     logging.debug(f"Creating bbox augmentor with sigma={args.sigma} and ratio={args.ratio} ...")
-    #     bbox_augmentor = OnlineBBoxAugmentor(sigma=args.sigma, ratio=args.ratio)
-    #     logging.debug("Bbox augmentor created.")
+    os.makedirs(args.output_path, exist_ok=True)
+
+    # load dataset and print stats
+
+    print(f'exiting'); exit(0)
 
     if args.config is not None:
         logging.debug("Config specified, creating from file. Ommiting all manual settings.")
@@ -445,8 +444,8 @@ def validate(
             iteration = monitor.iterations[-1]
             folder = os.path.join(".", f"step-{iteration}_{data_loader_name}")
             os.makedirs(folder, exist_ok=True)
-            cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}.jpg"), img)
-            cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}_soft.jpg"), img_soft)
+            # cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}.jpg"), img)
+            # cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}_soft.jpg"), img_soft)
 
         # if max_test_samples is not None and pages_seen >= max_test_samples:
         #     break
