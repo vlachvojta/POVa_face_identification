@@ -92,7 +92,7 @@ class App(ctk.CTk):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-s", "--src_path", help="Dataset path")
+    parser.add_argument("-s", "--src_path", required=True, help="Dataset path")
     args = parser.parse_args()
     
     app = App(args.src_path)
