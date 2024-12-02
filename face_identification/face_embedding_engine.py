@@ -1,9 +1,11 @@
 import os
 import sys
+
+import numpy as np
+from PIL import Image
 import torch
 import torch.nn.functional as F
 from facenet_pytorch import MTCNN, InceptionResnetV1
-import numpy as np
 
 # add current working directory + parent to path
 sys.path.append(os.getcwd())
