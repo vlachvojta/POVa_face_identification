@@ -13,7 +13,7 @@ class Partition(Enum):
     TEST = 2
 
 class DataLoader:
-    def __init__(self, data_path, partition=Partition.TRAIN):
+    def __init__(self, data_path, partition=Partition.TRAIN, limit: int = None):
         self.data_path = data_path
         
         if not os.path.exists(f"{self.data_path}/annotations.csv"):
@@ -26,6 +26,9 @@ class DataLoader:
             
             # Filter by partition
             self.data = [image for image in self.data if image.partition == partition.value]
+
+        if limit and len(self.data) > limit:
+            self.data = self.data[:limit]
 
     def __len__(self):
         return len(self.data)
