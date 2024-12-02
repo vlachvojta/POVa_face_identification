@@ -6,17 +6,24 @@ import time
 # import random
 from typing import Optional
 from collections import defaultdict
+import json
+import re
 
 import numpy as np
 import torch
 import cv2
-from clearml import Task
+# from clearml import Task
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datasets.data_loader import DataLoader
+from datasets.data_loader import DataLoader as CelebADataLoader
+from datasets.data_loader import Partition
 from face_detection.face_detection_engine import FaceDetectionEngine
+from face_identification.face_embedding_models import FacenetPytorchWrapper, NetUtils
+from face_identification.face_embedding_models import *  # TODO: try to eliminate this import
+from face_identification.training_monitor import TrainingMonitor
+from common import utils
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -32,9 +39,9 @@ def parse_arguments():
     parser = argparse.ArgumentParser(usage="Train a model for face identification.")
 
     # ClearML
-    parser.add_argument("--name", type=str, default="vlach_face_identification",
+    parser.add_argument("--name", type=str, required=False,
                         help="Task name for ClearML.")
-    parser.add_argument("--project-name", required=False, type=str, help="Project name for ClearML.")
+    parser.add_argument("--project-name", required=False, type=str, help="xvlach_POVa_face_identification")
 
     # Data paths
     parser.add_argument("-d", "--dataset-path", required=True, type=str, help="Path to the dataset folder.")
@@ -47,7 +54,7 @@ def parse_arguments():
     parser.add_argument("--view-step", default=50, type=int, help="Number of training iterations between validation.")
 
     # Optimization settings
-    parser.add_argument("--batch-size", "-b", default=64, type=int)
+    parser.add_argument("--batch-size", "-b", default=16, type=int)
     parser.add_argument("--lr", default=2e-4, type=float)
     parser.add_argument("--weight-decay", "-w", default=0.01, type=float)
 
@@ -66,72 +73,16 @@ def main():
     # this is a script taken from the layout organizer project but now I am modifying it to work with the face identification project
     args = parse_arguments()
     logging.info(args)
-
     # logging.getLogger("cv2").setLevel(level=logging.ERROR)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Running on: {device}")
 
-    os.makedirs(args.output_path, exist_ok=True)
-
-    # load dataset and print stats
-
-    print(f'exiting'); exit(0)
-
-    if args.config is not None:
-        logging.debug("Config specified, creating from file. Ommiting all manual settings.")
-        config = MultimodalLayoutTransformerConfig.from_file(args.config)
-    else:
-        logging.error("No config specified, creating from manual settings.")
-        # logging.debug("Creating config from manual settings ...")
-        # config = MultimodalLayoutTransformerConfig(
-        #     input_dropout=args.input_dropout,
-        #     layers=args.layers,
-        #     dim=args.dim,
-        #     heads=args.heads,
-        #     dropout=args.dropout,
-        #     residual_input=args.residual_input,
-        #     positional_embedding=args.pos_embedding,
-        #     pos_table_size=args.table_size,
-        #     pos_strategy=args.pos_strategy,
-        #     image_backbone=args.image_backbone,
-        #     image_backbone_depth=args.image_backbone_depth,
-        #     freeze_image_backbone=args.freeze_image_backbone,
-        #     image_width=args.image_width,
-        #     image_height=args.image_height,
-        #     max_bbox_count=args.max_bbox_count,
-        #     use_query_type=args.query_type,
-        #     class_queries=args.class_queries,
-        #     use_img_input=args.use_img,
-        #     image_encoder=args.image_encoder,
-        #     layers_encoder=args.layers_encoder,
-        #     heads_encoder=args.heads_encoder,
-        #     dropout_encoder=args.dropout_encoder,
-        # )
-        config.save()
-    logging.debug("Config created.")
-    print(config)
-
-    logging.debug("Creating train dataset ...")
-    trn_dataset = LayoutDataset(
-        xml_path=args.xml_train,
-        img_path=args.img,
-        max_bbox_count=config.max_bbox_count,
-        bbox_augmentor=bbox_augmentor,
-        image_size=(config.image_height, config.image_width),
-        line_based=args.line_based,
-    )
-    logging.debug(f"Train dataset created. trn_samples: {len(trn_dataset)}")
-
-    logging.debug("Creating validation dataset ...")
-    val_dataset = LayoutDataset(
-        xml_path=args.xml_val,
-        img_path=args.img,
-        max_bbox_count=config.max_bbox_count,
-        image_size=(config.image_height, config.image_width),
-        line_based=args.line_based,
-    )
-    logging.debug(f"Validation dataset created. val_samples: {len(val_dataset)}")
+    logging.info("Loading datasets ...")  # TODO put this back on after testing
+    trn_dataset = CelebADataLoader(args.dataset_path, partition=Partition.TRAIN)
+    val_dataset = CelebADataLoader(args.dataset_path, partition=Partition.VAL, limit=100)
+    logging.info(f"Train dataset:      {len(trn_dataset)} samples")
+    logging.info(f"Validation dataset: {len(val_dataset)} samples")
 
     trn_data_loader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=4)
 
@@ -140,28 +91,13 @@ def main():
         'val': torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2)
     }
 
-    # image_backbone = None
-    # if config.use_img_input:
-    #     logging.debug(f"Creating image backbone with name: {config.image_backbone} ...")
-    #     image_backbone = ImageBackbone(
-    #         name=config.image_backbone,
-    #         depth=config.image_backbone_depth,
-    #         device=device,
-    #         image_size=(config.image_height, config.image_width),
-    #     )
-    #     logging.debug("Image backbone created.")
-
-    logging.debug("Creating model ...")
-    # TODO create model
-    # model = MultimodalLayoutTransformer(
-    #     config=config,
-    #     device=device,
-    #     image_backbone=image_backbone,
-    # )
+    model, trained_steps = load_model(args.output_path)
     model = model.to(device)
     model.train()
-    logging.debug("Model created.")
-    print(model)
+    learnable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logging.debug(f'learnable parameters: {learnable_params}')
+
+    print(f'exiting'); exit(0)
 
     logging.info("Starting training ...")
     monitor = TrainingMonitor(name=args.name, project_name=args.project_name)
@@ -185,66 +121,6 @@ def main():
         logging.info("Training interrupted by user.")
 
     logging.info("DONE")
-
-
-class TrainingMonitor:
-    def __init__(
-        self,
-        name: Optional[str]=None,
-        project_name: Optional[str]=None,
-    ):
-        self.iterations: list[int] = []
-        self.values: dict[str, list[float]] = defaultdict(list)
-
-        self.name = name if name is not None else "training"
-        self.project_name = project_name
-        self.log_name = f"{self.project_name}_{self.name}" if self.project_name is not None else self.name
-
-        self.task = Task.init(project_name=project_name, task_name=name, continue_last_task=True) if project_name is not None else None
-
-    def add_value(
-        self,
-        key: str,
-        value: float,
-    ) -> None:
-        self.values[key].append(value)
-        if self.task is not None:
-            series, title = key.split("_", 1)
-            self.task.logger.report_scalar(title=title, series=series, value=value, iteration=self.iterations[-1])
-
-    def report_results(self, digits: int=4) -> None:
-        if self.task is None:
-            return
-
-        for k, v in self.values.items():
-            if "loss" in k:
-                self.task.logger.report_single_value(k, round(min(v), digits))
-            elif "acc" in k:
-                self.task.logger.report_single_value(k, round(max(v), digits))
-            else:
-                continue
-
-    def save_csv(self, path: str, ) -> None:
-        p = os.path.join(path, f"{self.log_name}.csv")
-        with open(p, "w") as f_csv:
-            keys = sorted(list(self.values.keys()))
-            f_csv.write("iteration," + ",".join(keys) + "\n")
-            for i, it in enumerate(self.iterations):
-                f_csv.write(f"{it}," + ",".join([str(self.values[k][i]) for k in keys]) + "\n")
-
-    # def load_from_csv(self, path: str) -> None:
-    #     p = os.path.join(path, f"{self.log_name}.csv")
-    #     with open(p, "r") as f_csv:
-    #         lines = f_csv.readlines()
-    #         keys = lines[0].strip().split(",")[1:]
-    #         for line in lines[1:]:
-    #             parts = line.strip().split(",")
-    #             self.iterations.append(int(parts[0]))
-    #             for i, k in enumerate(keys):
-    #                 self.values[k].append(float(parts[i+1]))
-
-    def get_last_string(self):
-        return f"ITER {self.iterations[-1]} " + " ".join([f"{k} {v[-1]:.4f}" for k, v in self.values.items()])
 
 
 def train(
@@ -464,7 +340,55 @@ def validate(
     model.train()
 
 
+def load_model(path: str, device = 'cpu') -> tuple[NetUtils, int]:
+    """Load model from the last checkpoint in the given path.
+    Return the model and the number of trained steps."""
+    assert path is not None, "Output path must not be None."
+    assert os.path.exists(path), f"Path {path} does not exist. Create it with the config.json file including model_class key."
 
+    config_path = os.path.join(path, 'config.json')
+    assert os.path.exists(config_path), f"Config file {config_path} does not exist. Create it with the model_class key."
+    with open(config_path, 'r') as f:
+        model_config = json.load(f)
+
+    model_name = utils.find_last_model(path)
+    if not model_name:  # no previous checkpoint found
+        model = init_model_class(model_config)
+        logging.info(f'Created new model of class {model.__class__.__name__}.')
+        return model, 0
+
+    trained_steps = 0
+    match_obj = re.match(rf'\S+_(\d+).pth', model_name)
+    if match_obj:
+        trained_steps = int(match_obj.groups(1)[0])
+
+    model = init_model_class(model_config)
+    model.load_state_dict(torch.load(os.path.join(path, model_name), map_location=device))
+    model.to(device)
+    logging.info(f'Loaded model from {os.path.join(path, model_name)} with {trained_steps} steps.')
+
+    return model, trained_steps
+
+def init_model_class(model_config):
+    # if not utils.class_exists(model_config['model_class']):
+    #     raise ValueError(f'Class {model_config["model_class"]} does not exist.')
+
+    try: 
+        model = eval(model_config['model_class']).from_config(model_config)
+    except Exception as e:
+        raise ValueError(f'Model class {model_config["model_class"]} does not exist or does not have from_config method.')
+    return model
+
+def save_model(model: NetUtils, output_path: str, trained_steps: int):
+    model_path = os.path.join(output_path, f'{model.__class__.__name__}_{trained_steps}.pth')
+    torch.save(model.state_dict(), model_path)
+
+    # save config
+    config_path = os.path.join(output_path, 'config.json')
+    with open(config_path, 'w') as f:
+        json.dump(model.config, f, indent=4)
+
+    return model_path
 
 
 if __name__ == "__main__":
