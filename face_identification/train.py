@@ -218,6 +218,22 @@ def validate(
     render: bool=False,
     # max_test_samples: int=None,
 ):
+    # def validate(threshold = 0.5):
+	# for in1, in2, same_or_diff:
+	# 	out1 = model(in1)
+	# 	out2 = model(in2)
+
+	# 	if same_or_diff:
+	# 		correct = distance(out1, out2) >= threshold
+	# 	else:
+	# 		correct = distance(out1, out2) < threshold
+	# 	total += 1
+	# 	return correct / total
+
+    # import torch.nn.functional as F
+    # distances = F.cosine_similarity(class_embeddings, image_embedding, dim=1)
+
+
     model.eval()
 
     pages_seen = 0
