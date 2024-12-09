@@ -15,7 +15,7 @@ class Partition(Enum):
     TEST = 2
 
 class DataLoader:
-    def __init__(self, data_path, partition=Partition.TRAIN, limit: int = None, sequential_classes: bool = False):
+    def __init__(self, data_path, partition=Partition.TRAIN, filter_class = 0, filter_attributes = [], limit: int = None, sequential_classes: bool = False):
         self.data_path = data_path
         
         if not os.path.exists(f"{self.data_path}/annotations.csv"):
@@ -28,6 +28,14 @@ class DataLoader:
             
             # Filter by partition
             self.data = [image for image in self.data if image.partition == partition.value]
+
+        if filter_class != 0:
+            # Classes begin from 1
+            self.data = [image for image in self.data if image.id == filter_class]
+            
+        if filter_attributes:
+            # Filter by attributes (check if filter_attributes is a subset of image attributes)
+            self.data = [image for image in self.data if set([attr.name for attr in filter_attributes]) <= set(image.attributes())]
 
         if limit and len(self.data) > limit:
             self.data = self.data[:limit]
