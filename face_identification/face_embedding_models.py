@@ -1,7 +1,6 @@
 import torch
 from facenet_pytorch import InceptionResnetV1
-# from torch_geometric.nn import GCNConv
-# from torch_geometric.nn import global_mean_pool, global_add_pool
+from torchvision import models
 
 class NetUtils:
     def create_config(self, locals):
@@ -26,6 +25,25 @@ class FacenetPytorchWrapper(torch.nn.Module, NetUtils):
     def forward(self, x):
         return self.model(x)
 
+
+class BasicResnet(torch.nn.Module, NetUtils):
+    def __init__(self, embedding_size=512):
+        super(self.__class__, self).__init__()
+        self.config = self.create_config(locals())
+
+        backbone = models.resnet50(pretrained=True)
+
+        # Remove final classification layer
+        backbone_modules = list(backbone.children())[:-1]
+        self.backbone = torch.nn.Sequential(*backbone_modules)
+
+        self.embedding = torch.nn.Linear(backbone.fc.in_features, embedding_size)
+
+    def forward(self, x):
+        features = self.backbone(x)
+        features = features.view(features.size(0), -1)
+        embeddings = self.embedding(features)
+        return embeddings
 
 
 # class GraphRegressorBasic(torch.nn.Module, NetUtils):
