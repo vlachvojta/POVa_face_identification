@@ -66,8 +66,7 @@ def main():
     logging.info(args)
     # logging.getLogger("cv2").setLevel(level=logging.ERROR)
 
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Running on: {device}")
 
     logging.info("Loading datasets ...")  # TODO put this back on after testing
