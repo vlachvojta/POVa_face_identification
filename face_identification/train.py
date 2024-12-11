@@ -30,7 +30,8 @@ def parse_arguments():
     # ClearML
     parser.add_argument("--name", type=str, required=False,
                         help="Task name for ClearML.")
-    parser.add_argument("--project-name", required=False, type=str, help="xvlach_POVa_face_identification")
+    parser.add_argument("--project-name", type=str, default="xvlach_POVa_face_identification",
+                        help="Project name for ClearML.")
 
     # Data paths
     parser.add_argument("-d", "--dataset-path", required=True, type=str, help="Path to the dataset folder.")
@@ -72,9 +73,9 @@ def main():
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True)
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, limit=100)
-    logging.info(f"Train dataset:      {len(trn_dataset)} samples")
-    logging.info(f"Validation dataset: {len(val_dataset)} samples")
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, limit=100, balance_subset=True)
+    logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
+    logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
 
     trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=4)
 
@@ -89,7 +90,7 @@ def main():
     logging.debug(f'learnable parameters: {learnable_params}')
 
     logging.info("Starting training ...")
-    monitor = TrainingMonitor(name=args.name, project_name=args.project_name)
+    monitor = TrainingMonitor(name=args.name, project_name=args.project_name, output_path=args.output_path)
     try:
         train(
             model=model,
@@ -201,9 +202,9 @@ def train(
 
             save_model(model, output_path, iteration)
             # torch.save(model.state_dict(), "./last.pth")
-            
+
             monitor.report_results()
-            monitor.save_csv(output_path)
+            monitor.save_csv()
             t1 = time.time()
 
 

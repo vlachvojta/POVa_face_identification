@@ -2,6 +2,7 @@ datasets/ORL_dataset_class_wise/
 face_identification/tmp/*
 local/*
 datasets/CelebA
+*vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
