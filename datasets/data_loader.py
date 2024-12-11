@@ -81,8 +81,6 @@ class DataLoader:
         unique_classes = set(item.id for item in data)
         data_len = len(data)
 
-        print(f'Initial subset has {data_len} samples with {len(unique_classes)} unique classes')
-
         # add the rest of the data
         for item in self.data[max_subset_len // 4:]:
             if item.id in unique_classes:

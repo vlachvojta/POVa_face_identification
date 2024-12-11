@@ -20,4 +20,5 @@ python train.py \
     --render \
     --max-iter 1000 \
     --view-step 5 \
-    --batch-size 16 \
+    --save-step 5 \
+    --batch-size 16

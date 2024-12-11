@@ -42,6 +42,7 @@ def parse_arguments():
     # Trainer settings
     parser.add_argument("--max-iter", default=100_000, type=int)
     parser.add_argument("--view-step", default=50, type=int, help="Number of training iterations between validation.")
+    parser.add_argument("--save-step", default=100, type=int, help="Number of training iterations between model saving.")
 
     # Optimization settings
     parser.add_argument("--batch-size", "-b", default=16, type=int)
@@ -101,6 +102,7 @@ def main():
             val_dataloaders=val_dataloaders,
             max_iter=args.max_iter,
             view_step=args.view_step,
+            save_step=args.save_step,
             monitor=monitor,
             output_path=args.output_path,
             render=args.render,
@@ -122,6 +124,7 @@ def train(
     weight_decay: float,
     max_iter: int,
     view_step: int,
+    save_step: int,
     monitor: TrainingMonitor,
     output_path: str,
     render: bool=False,
@@ -200,13 +203,12 @@ def train(
             log_string = monitor.get_last_string()
             print(f"{log_string}")
 
-            save_model(model, output_path, iteration)
-            # torch.save(model.state_dict(), "./last.pth")
-
             monitor.report_results()
             monitor.save_csv()
             t1 = time.time()
 
+        if iteration % save_step == 0:
+            save_model(model, output_path, iteration)
 
 def validate(
     model: torch.nn.Module,
