@@ -185,18 +185,18 @@ def train(
             train_losses = []
 
             # TODO add validation
-            # for val_name, val_data_loader in val_dataloaders.items():
-            #     validate(
-            #         model=model,
-            #         data_loader=val_data_loader,
-            #         data_loader_name=val_name,
-            #         criterion=criterion,
-            #         device=device,
-            #         monitor=monitor,
-            #         # loss_aggregation=loss_aggregation,
-            #         render=render,
-            #         # max_test_samples=max_test_samples,
-            #     )
+            for val_name, val_data_loader in val_dataloaders.items():
+                validate(
+                    model=model,
+                    data_loader=val_data_loader,
+                    data_loader_name=val_name,
+                    criterion=criterion,
+                    device=device,
+                    monitor=monitor,
+                    # loss_aggregation=loss_aggregation,
+                    render=render,
+                    # max_test_samples=max_test_samples,
+                )
 
             monitor.add_value("view_time", t2 - t1)
             log_string = monitor.get_last_string()
@@ -235,99 +235,158 @@ def validate(
     # import torch.nn.functional as F
     # distances = F.cosine_similarity(class_embeddings, image_embedding, dim=1)
 
-
     model.eval()
 
-    pages_seen = 0
-    bboxes_seen = 0
-    bboxes_predicted_right = 0
+    total_loss = 0.0
+    total_correct = 0
+    total_samples = 0
 
-    page_accuracies = []
-    val_loss = []
+    with torch.no_grad():
+        for batch_data in data_loader:
+            
+            images = batch_data["image"].to(device).float()
+            classes = batch_data["class"].to(device)
 
-    for batch_id, batch_data in enumerate(data_loader):
-        pages_seen += batch_data["bbox"].shape[0]
+            embeddings = model(images)
+            
+            loss = criterion(embeddings, classes)
+            total_loss += loss.item() * len(images)
+            
+            total_samples += len(images)
+            
+    accuracy = calculate_accuracy( threshold = 0.8, model = model, data_loader = data_loader, device = device )
 
-        bboxes = batch_data["bbox"].to(device)
-        query_types = batch_data["query_type"].to(device)
-        images = None
-        gt_bbox = batch_data["gt_bbox"].to(device)
-        mask = gt_bbox != -1
+    avg_loss = total_loss / total_samples
 
-        if model.config.use_img_input or render:
-            images = batch_data["image"].to(device)
+    monitor.add_value("val_accuracy", accuracy)
+    monitor.add_value("val_loss", avg_loss)
 
-        with torch.no_grad():
-            pred, _ = model(
-                x=bboxes,
-                images=images,
-                query_types=query_types,
-            )
-            loss = criterion(pred, gt_bbox)
-            # aggregated_loss = aggregate_loss(loss, mask, loss_aggregation)
+    logging.info(f"Validation Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
 
-        val_loss.extend(loss.tolist())
+    # pages_seen = 0
+    # bboxes_seen = 0
+    # bboxes_predicted_right = 0
 
-        pred_labels = torch.argmax(pred, dim=1)
-        valid_bbox_count = torch.sum(mask).item()
-        bboxes_seen += valid_bbox_count
+    # page_accuracies = []
+    # val_loss = []
 
-        # Bbox accuracy
-        bboxes_predicted_right += torch.sum(pred_labels[mask] == gt_bbox[mask]).item()
+    # for batch_id, batch_data in enumerate(data_loader):
+    #     pages_seen += batch_data["bbox"].shape[0]
 
-        # Page accuracy
-        page_predictions = (pred_labels == gt_bbox) & mask
-        correct_per_page = torch.sum(page_predictions, dim=1)
-        valid_bboxes_per_page = torch.sum(mask, dim=1)
-        page_acc = correct_per_page / valid_bboxes_per_page
-        page_accuracies.extend(page_acc.tolist())
+    #     bboxes = batch_data["bbox"].to(device)
+    #     query_types = batch_data["query_type"].to(device)
+    #     images = None
+    #     gt_bbox = batch_data["gt_bbox"].to(device)
+    #     mask = gt_bbox != -1
 
-        if render:
-            worst_sample_idx = int(torch.argmin(page_acc).item())
-            worst_sample_acc = float(page_acc[worst_sample_idx])
-            valid_count = torch.sum(mask[worst_sample_idx]).item()
-            worst_sample_bboxes = bboxes[worst_sample_idx][:valid_count]
-            worst_sample_img = images[worst_sample_idx]
+    #     if model.config.use_img_input or render:
+    #         images = batch_data["image"].to(device)
 
-            # # Hard predictions
-            # worst_sample_preds = pred_labels[worst_sample_idx][:valid_count]
-            # img = render_reading_order(
-            #     image=worst_sample_img,
-            #     bboxes=worst_sample_bboxes,
-            #     preds=worst_sample_preds,
-            # )
+    #     with torch.no_grad():
+    #         pred, _ = model(
+    #             x=bboxes,
+    #             images=images,
+    #             query_types=query_types,
+    #         )
+    #         loss = criterion(pred, gt_bbox)
+    #         # aggregated_loss = aggregate_loss(loss, mask, loss_aggregation)
 
-            # # Soft predictions
-            # prob = torch.nn.functional.softmax(pred[worst_sample_idx][:valid_count, :valid_count], dim=0)
-            # order = find_shortest_path(1-prob.cpu().numpy().T)
-            # order = transform_order_to_successor(order)
-            # img_soft = render_reading_order(
-            #     image=worst_sample_img,
-            #     bboxes=worst_sample_bboxes,
-            #     preds=order,
-            # )
+    #     val_loss.extend(loss.tolist())
 
-            iteration = monitor.iterations[-1]
-            folder = os.path.join(".", f"step-{iteration}_{data_loader_name}")
-            os.makedirs(folder, exist_ok=True)
-            # cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}.jpg"), img)
-            # cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}_soft.jpg"), img_soft)
+    #     pred_labels = torch.argmax(pred, dim=1)
+    #     valid_bbox_count = torch.sum(mask).item()
+    #     bboxes_seen += valid_bbox_count
 
-        # if max_test_samples is not None and pages_seen >= max_test_samples:
-        #     break
+    #     # Bbox accuracy
+    #     bboxes_predicted_right += torch.sum(pred_labels[mask] == gt_bbox[mask]).item()
 
-    bbox_accuracy = bboxes_predicted_right / bboxes_seen
-    page_accuracy = sum(page_accuracies) / pages_seen
+    #     # Page accuracy
+    #     page_predictions = (pred_labels == gt_bbox) & mask
+    #     correct_per_page = torch.sum(page_predictions, dim=1)
+    #     valid_bboxes_per_page = torch.sum(mask, dim=1)
+    #     page_acc = correct_per_page / valid_bboxes_per_page
+    #     page_accuracies.extend(page_acc.tolist())
 
-    monitor.add_value(f"{data_loader_name}_loss", sum(val_loss) / len(val_loss))
-    monitor.add_value(f"{data_loader_name}_acc_region", bbox_accuracy)
-    monitor.add_value(f"{data_loader_name}_acc_page", page_accuracy)
+    #     if render:
+    #         worst_sample_idx = int(torch.argmin(page_acc).item())
+    #         worst_sample_acc = float(page_acc[worst_sample_idx])
+    #         valid_count = torch.sum(mask[worst_sample_idx]).item()
+    #         worst_sample_bboxes = bboxes[worst_sample_idx][:valid_count]
+    #         worst_sample_img = images[worst_sample_idx]
 
-    if data_loader_name == "tst" and len(monitor.values["tst_acc_page"]) > 1 and page_accuracy > max(monitor.values["tst_acc_page"][:-1]):
-        logging.info(f"Found new best model with page accuracy {page_accuracy:.4f}, saving.")
-        torch.save(model.state_dict(), "./best.pth")
+    #         # # Hard predictions
+    #         # worst_sample_preds = pred_labels[worst_sample_idx][:valid_count]
+    #         # img = render_reading_order(
+    #         #     image=worst_sample_img,
+    #         #     bboxes=worst_sample_bboxes,
+    #         #     preds=worst_sample_preds,
+    #         # )
 
-    model.train()
+    #         # # Soft predictions
+    #         # prob = torch.nn.functional.softmax(pred[worst_sample_idx][:valid_count, :valid_count], dim=0)
+    #         # order = find_shortest_path(1-prob.cpu().numpy().T)
+    #         # order = transform_order_to_successor(order)
+    #         # img_soft = render_reading_order(
+    #         #     image=worst_sample_img,
+    #         #     bboxes=worst_sample_bboxes,
+    #         #     preds=order,
+    #         # )
+
+    #         iteration = monitor.iterations[-1]
+    #         folder = os.path.join(".", f"step-{iteration}_{data_loader_name}")
+    #         os.makedirs(folder, exist_ok=True)
+    #         # cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}.jpg"), img)
+    #         # cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}_soft.jpg"), img_soft)
+
+    #     # if max_test_samples is not None and pages_seen >= max_test_samples:
+    #     #     break
+
+    # bbox_accuracy = bboxes_predicted_right / bboxes_seen
+    # page_accuracy = sum(page_accuracies) / pages_seen
+
+    # monitor.add_value(f"{data_loader_name}_loss", sum(val_loss) / len(val_loss))
+    # monitor.add_value(f"{data_loader_name}_acc_region", bbox_accuracy)
+    # monitor.add_value(f"{data_loader_name}_acc_page", page_accuracy)
+
+    # if data_loader_name == "tst" and len(monitor.values["tst_acc_page"]) > 1 and page_accuracy > max(monitor.values["tst_acc_page"][:-1]):
+    #     logging.info(f"Found new best model with page accuracy {page_accuracy:.4f}, saving.")
+    #     torch.save(model.state_dict(), "./best.pth")
+
+    # model.train()
+
+def calculate_accuracy(
+    threshold: float,
+    model: torch.nn.Module,
+    data_loader: torch.utils.data.DataLoader,
+    device: torch.device
+):
+    correct = 0
+    total = 0
+    
+    model.eval()
+    
+    with torch.no_grad():
+        for batch in data_loader:
+            images = batch["image"].to(device).float()
+            classes = batch["class"].to(device)
+            
+            embeddings = model(images)
+            embeddings = torch.nn.functional.normalize(embeddings, dim=1)
+
+            similarities = torch.mm(embeddings, embeddings.T)
+            
+            same_or_diff = (classes.unsqueeze(0) == classes.unsqueeze(1)).to(device)
+
+            # setting diagonal to False to avoid self pairing
+            mask = torch.eye(similarities.size(0), device=device, dtype=torch.bool)
+            similarities = similarities.masked_select(~mask).view(similarities.size(0), -1)
+            same_or_diff = same_or_diff.masked_select(~mask).view(same_or_diff.size(0), -1)
+
+            correct += ((similarities >= threshold) == same_or_diff).sum().item()
+            
+            total += (same_or_diff.size(0) * (same_or_diff.size(0) - 1)) 
+            
+    return correct/total
 
 
 def load_model(path: str, device = 'cpu') -> tuple[NetUtils, int]:
