@@ -410,8 +410,6 @@ def calculate_accuracy(
     # print(f'batch_wise_accuracy: {batch_wise_accuracy}')
     # print(f'dataset_wise_accuracy: {dataset_wise_accuracy}')
 
-    val_accuracy = correct_all / total_all
-
     # calculate precision, recall, f1 score
     precision = correct_positive_all / (correct_positive_all + correct_negative_all)
     recall = correct_positive_all / total_positive_all
@@ -421,10 +419,12 @@ def calculate_accuracy(
     # print(f'f1_score: {f1_score}')
     # print(f'total_same_classes_in_batch: {total_same_classes_in_batch}')
 
-    monitor.add_value(f"val_precision_{threshold:.2f}", precision)
-    monitor.add_value(f"val_recall_{threshold:.2f}", recall)
-    monitor.add_value(f"val_f1_{threshold:.2f}", f1_score)
-    monitor.add_value(f"val_accuracy_{threshold:.2f}", val_accuracy)
+    monitor.add_value(f"val-{threshold:.2f}_precision", precision)
+    monitor.add_value(f"val-{threshold:.2f}_recall", recall)
+    monitor.add_value(f"val-{threshold:.2f}_f1_score", f1_score)
+
+    val_accuracy = correct_all / total_all
+    monitor.add_value(f"val-{threshold:.2f}_accuracy", val_accuracy)
 
     # return correct/total
 
