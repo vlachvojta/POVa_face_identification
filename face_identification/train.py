@@ -240,98 +240,6 @@ def validate(
     logging.info(f"Validation Loss: {avg_loss:.4f}")
 
     calculate_accuracy( threshold = 0.8, model = model, data_loader = data_loader, device = device, monitor = monitor)
-    # monitor.add_value("val_accuracy", accuracy)
-
-    # pages_seen = 0
-    # bboxes_seen = 0
-    # bboxes_predicted_right = 0
-
-    # page_accuracies = []
-    # val_loss = []
-
-    # for batch_id, batch_data in enumerate(data_loader):
-    #     pages_seen += batch_data["bbox"].shape[0]
-
-    #     bboxes = batch_data["bbox"].to(device)
-    #     query_types = batch_data["query_type"].to(device)
-    #     images = None
-    #     gt_bbox = batch_data["gt_bbox"].to(device)
-    #     mask = gt_bbox != -1
-
-    #     if model.config.use_img_input or render:
-    #         images = batch_data["image"].to(device)
-
-    #     with torch.no_grad():
-    #         pred, _ = model(
-    #             x=bboxes,
-    #             images=images,
-    #             query_types=query_types,
-    #         )
-    #         loss = criterion(pred, gt_bbox)
-    #         # aggregated_loss = aggregate_loss(loss, mask, loss_aggregation)
-
-    #     val_loss.extend(loss.tolist())
-
-    #     pred_labels = torch.argmax(pred, dim=1)
-    #     valid_bbox_count = torch.sum(mask).item()
-    #     bboxes_seen += valid_bbox_count
-
-    #     # Bbox accuracy
-    #     bboxes_predicted_right += torch.sum(pred_labels[mask] == gt_bbox[mask]).item()
-
-    #     # Page accuracy
-    #     page_predictions = (pred_labels == gt_bbox) & mask
-    #     correct_per_page = torch.sum(page_predictions, dim=1)
-    #     valid_bboxes_per_page = torch.sum(mask, dim=1)
-    #     page_acc = correct_per_page / valid_bboxes_per_page
-    #     page_accuracies.extend(page_acc.tolist())
-
-    #     if render:
-    #         worst_sample_idx = int(torch.argmin(page_acc).item())
-    #         worst_sample_acc = float(page_acc[worst_sample_idx])
-    #         valid_count = torch.sum(mask[worst_sample_idx]).item()
-    #         worst_sample_bboxes = bboxes[worst_sample_idx][:valid_count]
-    #         worst_sample_img = images[worst_sample_idx]
-
-    #         # # Hard predictions
-    #         # worst_sample_preds = pred_labels[worst_sample_idx][:valid_count]
-    #         # img = render_reading_order(
-    #         #     image=worst_sample_img,
-    #         #     bboxes=worst_sample_bboxes,
-    #         #     preds=worst_sample_preds,
-    #         # )
-
-    #         # # Soft predictions
-    #         # prob = torch.nn.functional.softmax(pred[worst_sample_idx][:valid_count, :valid_count], dim=0)
-    #         # order = find_shortest_path(1-prob.cpu().numpy().T)
-    #         # order = transform_order_to_successor(order)
-    #         # img_soft = render_reading_order(
-    #         #     image=worst_sample_img,
-    #         #     bboxes=worst_sample_bboxes,
-    #         #     preds=order,
-    #         # )
-
-    #         iteration = monitor.iterations[-1]
-    #         folder = os.path.join(".", f"step-{iteration}_{data_loader_name}")
-    #         os.makedirs(folder, exist_ok=True)
-    #         # cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}.jpg"), img)
-    #         # cv2.imwrite(os.path.join(folder, f"{iteration:06d}_{batch_id:03d}_{worst_sample_acc:.3f}_soft.jpg"), img_soft)
-
-    #     # if max_test_samples is not None and pages_seen >= max_test_samples:
-    #     #     break
-
-    # bbox_accuracy = bboxes_predicted_right / bboxes_seen
-    # page_accuracy = sum(page_accuracies) / pages_seen
-
-    # monitor.add_value(f"{data_loader_name}_loss", sum(val_loss) / len(val_loss))
-    # monitor.add_value(f"{data_loader_name}_acc_region", bbox_accuracy)
-    # monitor.add_value(f"{data_loader_name}_acc_page", page_accuracy)
-
-    # if data_loader_name == "tst" and len(monitor.values["tst_acc_page"]) > 1 and page_accuracy > max(monitor.values["tst_acc_page"][:-1]):
-    #     logging.info(f"Found new best model with page accuracy {page_accuracy:.4f}, saving.")
-    #     torch.save(model.state_dict(), "./best.pth")
-
-    # model.train()
 
 def calculate_accuracy(
     threshold: float,
@@ -340,16 +248,10 @@ def calculate_accuracy(
     device: torch.device,
     monitor: TrainingMonitor,
 ):
-    # correct = 0
-    # total = 0
-
     model.eval()
     with torch.no_grad():
-        # total_same_classes_in_batch = 0
 
-        # accumulate embeddings and classes for all images in the batch to calculate similarity accuracy on the whole dataset
-        embedding_size = 512
-        embeddings_all = torch.empty((len(data_loader.dataset), embedding_size), device=device)
+        embeddings_all = torch.empty((len(data_loader.dataset), model.embedding_size), device=device)
         classes_all = torch.empty((len(data_loader.dataset)), device=device, dtype=torch.int64)
 
         for i, batch in enumerate(data_loader):
@@ -359,29 +261,10 @@ def calculate_accuracy(
             embeddings = model(images)
             embeddings = torch.nn.functional.normalize(embeddings, dim=1)
 
-            # calculate cosine similarity
-            # similarities = torch.mm(embeddings, embeddings.T)
-            # print(f'classes: {classes}')
-
-            # add embeddings to the embeddings_all tensor
             start = i*len(embeddings)
             end = start + len(embeddings)
             embeddings_all[start:end] = embeddings
             classes_all[start:end] = classes
-
-            # same_or_diff = (classes.unsqueeze(0) == classes.unsqueeze(1)).to(device)
-
-            # # setting diagonal to False to avoid self pairing
-            # mask = torch.eye(similarities.size(0), device=device, dtype=torch.bool)
-            # similarities = similarities.masked_select(~mask).view(similarities.size(0), -1)
-            # same_or_diff = same_or_diff.masked_select(~mask).view(same_or_diff.size(0), -1)
-            # total_same_classes_in_batch += same_or_diff.sum().item()
-
-            # correct += ((similarities >= threshold) == same_or_diff).sum().item()
-            # print(f'correct: {correct}')
-            
-            # total += (same_or_diff.size(0) * (same_or_diff.size(0) - 1))
-            # print(f'total: {total}')
 
     # calculate accuracy on the whole dataset
     similarities_all = torch.mm(embeddings_all, embeddings_all.T)
@@ -392,32 +275,32 @@ def calculate_accuracy(
     similarities_all = similarities_all.masked_select(~mask).view(similarities_all.size(0), -1)
     same_or_diff_all = same_or_diff_all.masked_select(~mask).view(same_or_diff_all.size(0), -1)
 
+    thresholds = [0.5, 0.7, 0.9]
+
+    for threshold in thresholds:
+        calculate_accuracy_with_threshold(
+            threshold=threshold,
+            similarities_all=similarities_all,
+            same_or_diff_all=same_or_diff_all,
+            monitor=monitor
+        )
+
+def calculate_accuracy_with_threshold(
+    threshold: float,
+    similarities_all: torch.Tensor,
+    same_or_diff_all: torch.Tensor,
+    monitor: TrainingMonitor
+):
     correct_all = ((similarities_all >= threshold) == same_or_diff_all).sum().item()
     correct_positive_all = ((similarities_all >= threshold) & same_or_diff_all).sum().item()
     correct_negative_all = ((similarities_all < threshold) & ~same_or_diff_all).sum().item()
     total_positive_all = same_or_diff_all.sum().item()
     total_all = (same_or_diff_all.size(0) * (same_or_diff_all.size(0) - 1))
-    # print(f'correct_all: {correct_all}')
-    print(f'correct_positive_all: {correct_positive_all}')
-    print(f'correct_negative_all: {correct_negative_all}')
-    print(f'total_all: {total_all}')
-
-    total_same_classes_all = same_or_diff_all.sum().item()
-    print(f'total_same_classes_all: {total_same_classes_all}')
-
-    # batch_wise_accuracy = correct / total
-    # dataset_wise_accuracy = correct_all / total_all
-    # print(f'batch_wise_accuracy: {batch_wise_accuracy}')
-    # print(f'dataset_wise_accuracy: {dataset_wise_accuracy}')
 
     # calculate precision, recall, f1 score
     precision = correct_positive_all / (correct_positive_all + correct_negative_all)
     recall = correct_positive_all / total_positive_all
     f1_score = 2 * (precision * recall) / (precision + recall)
-    # print(f'precision: {precision}')
-    # print(f'recall: {recall}')
-    # print(f'f1_score: {f1_score}')
-    # print(f'total_same_classes_in_batch: {total_same_classes_in_batch}')
 
     monitor.add_value(f"val-{threshold:.2f}_precision", precision)
     monitor.add_value(f"val-{threshold:.2f}_recall", recall)
@@ -425,8 +308,6 @@ def calculate_accuracy(
 
     val_accuracy = correct_all / total_all
     monitor.add_value(f"val-{threshold:.2f}_accuracy", val_accuracy)
-
-    # return correct/total
 
 
 def load_model(path: str, device = 'cpu') -> tuple[NetUtils, int]:
