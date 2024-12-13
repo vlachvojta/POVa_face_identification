@@ -223,8 +223,10 @@ def validate(
 
     model.eval()
     with torch.no_grad():
-        for batch_data in data_loader:
-            
+        embeddings_all = torch.empty((len(data_loader.dataset), model.embedding_size), device=device)
+        classes_all = torch.empty((len(data_loader.dataset)), device=device, dtype=torch.int64)
+
+        for i, batch_data in enumerate(data_loader):
             images = batch_data["image"].to(device).float()
             classes = batch_data["class"].to(device)
 
@@ -232,41 +234,22 @@ def validate(
             
             loss = criterion(embeddings, classes)
             total_loss += loss.item() * len(images)
-            
+
             total_samples += len(images)
-            
-    avg_loss = total_loss / total_samples
-    monitor.add_value("val_loss", avg_loss)
-    logging.info(f"Validation Loss: {avg_loss:.4f}")
 
-    calculate_accuracy( threshold = 0.8, model = model, data_loader = data_loader, device = device, monitor = monitor)
-
-def calculate_accuracy(
-    threshold: float,
-    model: torch.nn.Module,
-    data_loader: torch.utils.data.DataLoader,
-    device: torch.device,
-    monitor: TrainingMonitor,
-):
-    model.eval()
-    with torch.no_grad():
-
-        embeddings_all = torch.empty((len(data_loader.dataset), model.embedding_size), device=device)
-        classes_all = torch.empty((len(data_loader.dataset)), device=device, dtype=torch.int64)
-
-        for i, batch in enumerate(data_loader):
-            images = batch["image"].to(device).float()
-            classes = batch["class"].to(device)
-
-            embeddings = model(images)
+            # normalize embeddings + store them and classes for accuracy calculation
             embeddings = torch.nn.functional.normalize(embeddings, dim=1)
-
             start = i*len(embeddings)
             end = start + len(embeddings)
             embeddings_all[start:end] = embeddings
             classes_all[start:end] = classes
 
-    # calculate accuracy on the whole dataset
+    # calculate average loss
+    avg_loss = total_loss / total_samples
+    monitor.add_value("val_loss", avg_loss)
+    logging.info(f"Validation Loss: {avg_loss:.4f}")
+
+    # calculate similarity matrix + bool matrix for same or different classes
     similarities_all = torch.mm(embeddings_all, embeddings_all.T)
     same_or_diff_all = (classes_all.unsqueeze(0) == classes_all.unsqueeze(1)).to(device)
 
@@ -275,8 +258,7 @@ def calculate_accuracy(
     similarities_all = similarities_all.masked_select(~mask).view(similarities_all.size(0), -1)
     same_or_diff_all = same_or_diff_all.masked_select(~mask).view(same_or_diff_all.size(0), -1)
 
-    thresholds = [0.5, 0.7, 0.9]
-
+    thresholds = [0.0, 0.4, 0.8]
     for threshold in thresholds:
         calculate_accuracy_with_threshold(
             threshold=threshold,
@@ -302,12 +284,12 @@ def calculate_accuracy_with_threshold(
     recall = correct_positive_all / total_positive_all
     f1_score = 2 * (precision * recall) / (precision + recall)
 
-    monitor.add_value(f"val-{threshold:.2f}_precision", precision)
-    monitor.add_value(f"val-{threshold:.2f}_recall", recall)
-    monitor.add_value(f"val-{threshold:.2f}_f1_score", f1_score)
+    monitor.add_value(f"val{threshold:.2f}_precision", precision)
+    monitor.add_value(f"val{threshold:.2f}_recall", recall)
+    monitor.add_value(f"val{threshold:.2f}_f1_score", f1_score)
 
     val_accuracy = correct_all / total_all
-    monitor.add_value(f"val-{threshold:.2f}_accuracy", val_accuracy)
+    monitor.add_value(f"val{threshold:.2f}_accuracy", val_accuracy)
 
 
 def load_model(path: str, device = 'cpu') -> tuple[NetUtils, int]:
