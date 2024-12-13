@@ -7,6 +7,7 @@ import json
 import re
 
 import torch
+import torch.nn.functional as F
 from pytorch_metric_learning import losses, miners
 from pytorch_metric_learning.distances import CosineSimilarity
 
@@ -43,6 +44,7 @@ def parse_arguments():
     parser.add_argument("--max-iter", default=100_000, type=int)
     parser.add_argument("--view-step", default=50, type=int, help="Number of training iterations between validation.")
     parser.add_argument("--save-step", default=100, type=int, help="Number of training iterations between model saving.")
+    parser.add_argument("--val-size", default=None, type=int, help="Number of samples to use for validation, leave None to use all samples.")
 
     # Optimization settings
     parser.add_argument("--batch-size", "-b", default=16, type=int)
@@ -61,7 +63,6 @@ def parse_arguments():
 
 
 def main():
-    # this is a script taken from the layout organizer project but now I am modifying it to work with the face identification project
     args = parse_arguments()
     logging.info(args)
     # logging.getLogger("cv2").setLevel(level=logging.ERROR)
@@ -69,11 +70,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Running on: {device}")
 
-    logging.info("Loading datasets ...")  # TODO put this back on after testing
+    logging.info("Loading datasets ...")
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True)
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, limit=100, balance_subset=True)
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, limit=args.val_size, balance_subset=True)
+
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
 
@@ -175,7 +177,6 @@ def train(
         optimizer.step()
         train_losses.append(loss.item())
 
-        # print(f'exiting'); exit(0)
         if iteration % view_step == 0:
             t2 = time.time()
 
@@ -184,7 +185,6 @@ def train(
 
             train_losses = []
 
-            # TODO add validation
             for val_name, val_data_loader in val_dataloaders.items():
                 validate(
                     model=model,
@@ -193,9 +193,7 @@ def train(
                     criterion=criterion,
                     device=device,
                     monitor=monitor,
-                    # loss_aggregation=loss_aggregation,
                     render=render,
-                    # max_test_samples=max_test_samples,
                 )
 
             monitor.add_value("view_time", t2 - t1)
@@ -216,31 +214,14 @@ def validate(
     criterion: torch.nn.Module,
     device: torch.device,
     monitor: TrainingMonitor,
-    # loss_aggregation: str,
     render: bool=False,
-    # max_test_samples: int=None,
 ):
-    # def validate(threshold = 0.5):
-	# for in1, in2, same_or_diff:
-	# 	out1 = model(in1)
-	# 	out2 = model(in2)
-
-	# 	if same_or_diff:
-	# 		correct = distance(out1, out2) >= threshold
-	# 	else:
-	# 		correct = distance(out1, out2) < threshold
-	# 	total += 1
-	# 	return correct / total
-
-    # import torch.nn.functional as F
-    # distances = F.cosine_similarity(class_embeddings, image_embedding, dim=1)
-
-    model.eval()
-
+    logging.info("Validating ...")
     total_loss = 0.0
     total_correct = 0
     total_samples = 0
 
+    model.eval()
     with torch.no_grad():
         for batch_data in data_loader:
             
@@ -254,14 +235,12 @@ def validate(
             
             total_samples += len(images)
             
-    accuracy = calculate_accuracy( threshold = 0.8, model = model, data_loader = data_loader, device = device )
-
     avg_loss = total_loss / total_samples
-
-    monitor.add_value("val_accuracy", accuracy)
     monitor.add_value("val_loss", avg_loss)
+    logging.info(f"Validation Loss: {avg_loss:.4f}")
 
-    logging.info(f"Validation Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
+    calculate_accuracy( threshold = 0.8, model = model, data_loader = data_loader, device = device, monitor = monitor)
+    # monitor.add_value("val_accuracy", accuracy)
 
     # pages_seen = 0
     # bboxes_seen = 0
@@ -358,35 +337,96 @@ def calculate_accuracy(
     threshold: float,
     model: torch.nn.Module,
     data_loader: torch.utils.data.DataLoader,
-    device: torch.device
+    device: torch.device,
+    monitor: TrainingMonitor,
 ):
-    correct = 0
-    total = 0
-    
+    # correct = 0
+    # total = 0
+
     model.eval()
-    
     with torch.no_grad():
-        for batch in data_loader:
+        # total_same_classes_in_batch = 0
+
+        # accumulate embeddings and classes for all images in the batch to calculate similarity accuracy on the whole dataset
+        embedding_size = 512
+        embeddings_all = torch.empty((len(data_loader.dataset), embedding_size), device=device)
+        classes_all = torch.empty((len(data_loader.dataset)), device=device, dtype=torch.int64)
+
+        for i, batch in enumerate(data_loader):
             images = batch["image"].to(device).float()
             classes = batch["class"].to(device)
-            
+
             embeddings = model(images)
             embeddings = torch.nn.functional.normalize(embeddings, dim=1)
 
-            similarities = torch.mm(embeddings, embeddings.T)
-            
-            same_or_diff = (classes.unsqueeze(0) == classes.unsqueeze(1)).to(device)
+            # calculate cosine similarity
+            # similarities = torch.mm(embeddings, embeddings.T)
+            # print(f'classes: {classes}')
 
-            # setting diagonal to False to avoid self pairing
-            mask = torch.eye(similarities.size(0), device=device, dtype=torch.bool)
-            similarities = similarities.masked_select(~mask).view(similarities.size(0), -1)
-            same_or_diff = same_or_diff.masked_select(~mask).view(same_or_diff.size(0), -1)
+            # add embeddings to the embeddings_all tensor
+            start = i*len(embeddings)
+            end = start + len(embeddings)
+            embeddings_all[start:end] = embeddings
+            classes_all[start:end] = classes
 
-            correct += ((similarities >= threshold) == same_or_diff).sum().item()
+            # same_or_diff = (classes.unsqueeze(0) == classes.unsqueeze(1)).to(device)
+
+            # # setting diagonal to False to avoid self pairing
+            # mask = torch.eye(similarities.size(0), device=device, dtype=torch.bool)
+            # similarities = similarities.masked_select(~mask).view(similarities.size(0), -1)
+            # same_or_diff = same_or_diff.masked_select(~mask).view(same_or_diff.size(0), -1)
+            # total_same_classes_in_batch += same_or_diff.sum().item()
+
+            # correct += ((similarities >= threshold) == same_or_diff).sum().item()
+            # print(f'correct: {correct}')
             
-            total += (same_or_diff.size(0) * (same_or_diff.size(0) - 1)) 
-            
-    return correct/total
+            # total += (same_or_diff.size(0) * (same_or_diff.size(0) - 1))
+            # print(f'total: {total}')
+
+    # calculate accuracy on the whole dataset
+    similarities_all = torch.mm(embeddings_all, embeddings_all.T)
+    same_or_diff_all = (classes_all.unsqueeze(0) == classes_all.unsqueeze(1)).to(device)
+
+    # setting diagonal to False to avoid self pairing
+    mask = torch.eye(similarities_all.size(0), device=device, dtype=torch.bool)
+    similarities_all = similarities_all.masked_select(~mask).view(similarities_all.size(0), -1)
+    same_or_diff_all = same_or_diff_all.masked_select(~mask).view(same_or_diff_all.size(0), -1)
+
+    correct_all = ((similarities_all >= threshold) == same_or_diff_all).sum().item()
+    correct_positive_all = ((similarities_all >= threshold) & same_or_diff_all).sum().item()
+    correct_negative_all = ((similarities_all < threshold) & ~same_or_diff_all).sum().item()
+    total_positive_all = same_or_diff_all.sum().item()
+    total_all = (same_or_diff_all.size(0) * (same_or_diff_all.size(0) - 1))
+    # print(f'correct_all: {correct_all}')
+    print(f'correct_positive_all: {correct_positive_all}')
+    print(f'correct_negative_all: {correct_negative_all}')
+    print(f'total_all: {total_all}')
+
+    total_same_classes_all = same_or_diff_all.sum().item()
+    print(f'total_same_classes_all: {total_same_classes_all}')
+
+    # batch_wise_accuracy = correct / total
+    # dataset_wise_accuracy = correct_all / total_all
+    # print(f'batch_wise_accuracy: {batch_wise_accuracy}')
+    # print(f'dataset_wise_accuracy: {dataset_wise_accuracy}')
+
+    val_accuracy = correct_all / total_all
+
+    # calculate precision, recall, f1 score
+    precision = correct_positive_all / (correct_positive_all + correct_negative_all)
+    recall = correct_positive_all / total_positive_all
+    f1_score = 2 * (precision * recall) / (precision + recall)
+    # print(f'precision: {precision}')
+    # print(f'recall: {recall}')
+    # print(f'f1_score: {f1_score}')
+    # print(f'total_same_classes_in_batch: {total_same_classes_in_batch}')
+
+    monitor.add_value(f"val_precision_{threshold:.2f}", precision)
+    monitor.add_value(f"val_recall_{threshold:.2f}", recall)
+    monitor.add_value(f"val_f1_{threshold:.2f}", f1_score)
+    monitor.add_value(f"val_accuracy_{threshold:.2f}", val_accuracy)
+
+    # return correct/total
 
 
 def load_model(path: str, device = 'cpu') -> tuple[NetUtils, int]:

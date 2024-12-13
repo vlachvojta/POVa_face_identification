@@ -11,7 +11,6 @@ fi
 # name = last part of the output path
 NAME=$(basename $OUTPUT_PATH)
 
-
 python train.py \
     --name $NAME \
     --dataset-path ../../datasets/CelebA/ \
@@ -21,4 +20,5 @@ python train.py \
     --max-iter 1000 \
     --view-step 5 \
     --save-step 5 \
+    --val-size 1000 \
     --batch-size 16
