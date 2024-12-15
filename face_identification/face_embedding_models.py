@@ -15,6 +15,8 @@ class NetUtils:
         return cls(**config)
 
 class FacenetPytorchWrapper(torch.nn.Module, NetUtils):
+    embedding_size = 512
+
     def __init__(self, model_name: str = 'vggface2'):
         super(self.__class__, self).__init__()
         self.config = self.create_config(locals())
