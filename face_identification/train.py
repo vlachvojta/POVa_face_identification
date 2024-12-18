@@ -231,6 +231,7 @@ def validate(
     total_loss = 0.0
     total_correct = 0
     total_samples = 0
+    batch_losses = []
 
     model.eval()
     with torch.no_grad():
@@ -245,6 +246,7 @@ def validate(
             
             loss = criterion(embeddings, classes)
             total_loss += loss.item() * len(images)
+            batch_losses.append((i, loss.item(), images))
 
             total_samples += len(images)
 
@@ -254,10 +256,14 @@ def validate(
             end = start + len(embeddings)
             embeddings_all[start:end] = embeddings
             classes_all[start:end] = classes
-            
-            if render:
-                image_name = f"{training_iter}_{i}_loss_{loss.item():.4f}.png"
-                render_batch_images(images = images, path = f"{output_path}/val", filename = image_name)
+    
+    worst_batches = sorted(batch_losses, key=lambda x: x[1], reverse=True)[:3]
+    
+    if render:
+        for batch_index, loss, images in worst_batches:
+            image_name = f"{training_iter}_{batch_index}_loss_{loss:.4f}.png"
+            render_batch_images(images=images, path=f"{output_path}/val", filename=image_name)
+
 
     # calculate average loss
     avg_loss = total_loss / total_samples
