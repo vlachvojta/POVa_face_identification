@@ -1,6 +1,13 @@
 # POVa_face_identification
 POVa project (Computer Vision) at FIT (B|V)UT. 2024/2025 winter semestr
 
+## TODOs
+- [ ] [Zuzka] render výsledků trénování - jak jsme se bavili, vyrenderovat nejhorší obrázky z batche, nebo prostě něco vyrenderovat, aby se dala udělat nějaká kvalitativní analýza trénování. (např. vyrenderovat všechny obrázky v batchi do jenoho obrázku a do názvu souboru dát train loss, příklad renderování více obličejů do obrázku) )
+- [ ] [Vojta] integrace face detection do trénování - to pokud vím, ještě není, takže tam zatím cpeme neupravený data... 😅
+- [ ] Změřit, jak si vede náš Facenet model na našem datasetu CelebA  - jak si vůbec vede předtrénovaný model bez samotného trénování? (viz face_identification_evaluation.py)
+- [ ] vybírání atributů, které matou model
+
+
 ## Questions for 27.11. meeting
 - [x] dataset: 
       - specific subset - celebA, TODO find a good descriptor
@@ -26,7 +33,8 @@ POVa project (Computer Vision) at FIT (B|V)UT. 2024/2025 winter semestr
   - [x] evaluation of existing models (code is ready)
   - [ ] fine-tuning (training on a new task)
 
-- [ ] demo app
+- demo app:
+  - [x] load images, filters + view attributes
   - camera input, take a photo, run engine, find closest embeddings in a database, show result
 - [ ] create our dataset
 
