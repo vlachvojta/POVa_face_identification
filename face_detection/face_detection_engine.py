@@ -1,6 +1,7 @@
 import numpy as np
 from facenet_pytorch import MTCNN
 from PIL import Image
+import matplotlib.pyplot as plt
 
 
 class FaceDetectionEngine:
@@ -26,10 +27,27 @@ class FaceDetectionEngine:
 
 		return results
 
+	def crop_faces(self, image, threshold=0.8):
+		results = self(image)
+
+		# filter out boxes with lower probability than threshold
+		if threshold is not None:
+			boxes = [result for result in results if result['prob'] > threshold]
+
+		# crop faces
+		faces = []
+		for box in boxes:
+			l, t, r, b = box['box']
+			l, t, r, b = int(l), int(t), int(r), int(b)
+
+			# crop face
+			face = image[t:b, l:r]
+			faces.append(face)
+
+		return faces
 
 def show_image_with_boxes(image, result):
 	# show image with boxes
-	import matplotlib.pyplot as plt
 	from matplotlib.patches import Rectangle
 	from matplotlib.patches import Circle
 
@@ -61,6 +79,12 @@ def example_usage():
 	result = face_detector(image)
 	print("Detection results:", result)
 	show_image_with_boxes(image, result)
+
+	cropped_faces = face_detector.crop_faces(image)
+	print(f'Number of cropped faces: {len(cropped_faces)}')
+	for i, face in enumerate(cropped_faces):
+		plt.imshow(face)
+		plt.show()
 
 
 if __name__ == "__main__":
