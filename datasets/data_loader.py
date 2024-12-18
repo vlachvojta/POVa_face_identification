@@ -94,11 +94,26 @@ class DataLoader:
 
         return data
 
+class Normalization(Enum):
+    MEAN_STD = "mean_std"
+    MIN_MAX = "min_max"
+    _0_1 = "0_1"
+    _1_1 = "1_1"
+
+class Squarify(Enum):
+    CROP = "crop"
+    PAD = "pad"
+    AROUND_FACE = "around_face"
+
 class DataLoaderTorchWrapper(DataLoader):
     """Wrapper for DataLoader to allow automatic pytorch batching."""
-    def __init__(self, data_path, face_detection_engine=None, *args, **kwargs):
+    def __init__(self, data_path, face_detection_engine=None, squarify: Squarify = None,
+                 normalize: Normalization = None, resize: int = None, *args, **kwargs):
         super().__init__(data_path, *args, **kwargs)
         self.face_detection_engine = face_detection_engine
+        self.squarify = squarify
+        self.normalize = normalize
+        self.resize = resize
 
     def __getitem__(self, index):
         item = super().__getitem__(index)
@@ -107,21 +122,81 @@ class DataLoaderTorchWrapper(DataLoader):
         orig_image = image.copy()
         assert image.ndim == 3, f"Image should have 3 dimensions (H, W, C) or (C, H, W), got {image.ndim} dimensions with shape {image.shape}"
 
-        # Crop face from image
-        if self.face_detection_engine:
-            faces, probs = self.face_detection_engine.crop_faces(image)
-            if len(faces) > 1:
-                # pick the face with the highest probability
-                image = faces[np.argmax(probs)]
-            elif len(faces) == 1:
-                image = faces[0]
+        # # Crop face from image
+        # if self.face_detection_engine:
+        #     faces, probs = self.face_detection_engine.crop_faces(image)
+        #     if len(faces) > 1:
+        #         # pick the face with the highest probability
+        #         image = faces[np.argmax(probs)]
+        #     elif len(faces) == 1:
+        #         image = faces[0]
 
-            if image.shape[0] == 0 or image.shape[1] == 0:
-                print(f"Skipping face detection on image {item.filename} as it has zero width or height after face detection. shape: {image.shape}")
-                image = orig_image
+        #     if image.shape[0] == 0 or image.shape[1] == 0:
+        #         print(f"Skipping face detection on image {item.filename} as it has zero width or height after face detection. shape: {image.shape}")
+        #         image = orig_image
 
-        image = cv2.resize(image, (160, 160))
-        image = image / 255.0 # Normalize to [0, 1]
+        if self.squarify:
+            if self.squarify == Squarify.PAD:
+                # pad the image to make it square
+                h, w = image.shape[:2]
+                if h > w:
+                    pad = (h - w) // 2
+                    image = cv2.copyMakeBorder(image, 0, 0, pad, pad, cv2.BORDER_CONSTANT, value=0)
+                elif w > h:
+                    pad = (w - h) // 2
+                    image = cv2.copyMakeBorder(image, pad, pad, 0, 0, cv2.BORDER_CONSTANT, value=0)
+            elif self.squarify == Squarify.AROUND_FACE:
+                # detect face box and crop the image around the face
+                assert self.face_detection_engine, "Face detection engine must be provided to squarify around face."
+                result = self.face_detection_engine(image)[0]
+                if result:
+                    face = result['box']
+                    l, t, r, b = face
+                    l, t, r, b = int(l), int(t), int(r), int(b)
+                    # crop face and pad to make it square
+                    if b - t > r - l:
+                        pad = (b - t - (r - l)) // 2
+                        l = max(0, l - pad)
+                        r = min(image.shape[1], r + pad)
+                    elif r - l > b - t:
+                        pad = (r - l - (b - t)) // 2
+                        t = max(0, t - pad)
+                        b = min(image.shape[0], b + pad)
+
+                    t = max(0, t)
+                    b = min(image.shape[0], b)
+                    l = max(0, l)
+                    r = min(image.shape[1], r)
+                    # complete squarify if needed
+                    h, w = b - t, r - l
+                    if h > w:
+                        pad = (h - w) // 2
+                        l = max(0, l - pad)
+                        r = min(image.shape[1], r + pad)
+                    elif w > h:
+                        pad = (w - h) // 2
+                        t = max(0, t - pad)
+                        b = min(image.shape[0], b + pad)
+                    image = image[t:b, l:r]
+
+                else:
+                    print(f"Skipping squarify around face on image {item.filename} as no face was detected.")
+                    image = orig_image
+
+        if self.resize:
+            image = cv2.resize(image, (self.resize, self.resize))
+
+        if self.normalize:
+            if self.normalize == Normalization.MEAN_STD:
+                image = (image - 127.5) / 128.0
+            elif self.normalize == Normalization.MIN_MAX:
+                image = (image - image.min()) / (image.max() - image.min())
+            elif self.normalize == Normalization._0_1:
+                image = image / 255.0
+            elif self.normalize == Normalization._1_1:
+                image = image / 127.5 - 1.0
+            else:
+                raise ValueError(f"Unknown normalization method: {self.normalize}")
 
         if image.shape[2] == 3:  # Engines need images in RGB format [3, H, W]
             image = image.transpose(2, 0, 1)
