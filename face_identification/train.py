@@ -39,6 +39,7 @@ def parse_arguments():
     parser.add_argument("-o", "--output-path", required=True, type=str, help="Path to the output folder.")
     parser.add_argument("--config", type=str, default=None, help="Path to model config")
     parser.add_argument("--render", action="store_true", help="Render validation samples.")
+    parser.add_argument("--detect-faces", action="store_true", help="Detect faces in images using MTCNN from facenet_pytorch.")
 
     # Trainer settings
     parser.add_argument("--max-iter", default=100_000, type=int)
@@ -71,10 +72,14 @@ def main():
     logging.info(f"Running on: {device}")
 
     logging.info("Loading datasets ...")
+    face_detection_engine = None
+    if args.detect_faces:
+        face_detection_engine = FaceDetectionEngine(device='cpu')
+
     trn_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.TRAIN, sequential_classes=True)
+        args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, face_detection_engine=face_detection_engine)
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, limit=args.val_size, balance_subset=True)
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, face_detection_engine=face_detection_engine, limit=args.val_size, balance_subset=True)
 
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")

@@ -1,8 +1,9 @@
 import os
 import csv
 from enum import Enum
-from PIL import Image
 
+from PIL import Image
+import cv2
 import numpy as np
 
 from datasets.data_structure import ImageData
@@ -95,11 +96,32 @@ class DataLoader:
 
 class DataLoaderTorchWrapper(DataLoader):
     """Wrapper for DataLoader to allow automatic pytorch batching."""
+    def __init__(self, data_path, face_detection_engine=None, *args, **kwargs):
+        super().__init__(data_path, *args, **kwargs)
+        self.face_detection_engine = face_detection_engine
+
     def __getitem__(self, index):
         item = super().__getitem__(index)
 
         image = np.array(item.image)
+        orig_image = image.copy()
         assert image.ndim == 3, f"Image should have 3 dimensions (H, W, C) or (C, H, W), got {image.ndim} dimensions with shape {image.shape}"
+
+        # Crop face from image
+        if self.face_detection_engine:
+            faces, probs = self.face_detection_engine.crop_faces(image)
+            if len(faces) > 1:
+                # pick the face with the highest probability
+                image = faces[np.argmax(probs)]
+            elif len(faces) == 1:
+                image = faces[0]
+
+            if image.shape[0] == 0 or image.shape[1] == 0:
+                print(f"Skipping face detection on image {item.filename} as it has zero width or height after face detection. shape: {image.shape}")
+                image = orig_image
+
+        image = cv2.resize(image, (160, 160))
+        image = image / 255.0 # Normalize to [0, 1]
 
         if image.shape[2] == 3:  # Engines need images in RGB format [3, H, W]
             image = image.transpose(2, 0, 1)

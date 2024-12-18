@@ -27,24 +27,26 @@ class FaceDetectionEngine:
 
 		return results
 
-	def crop_faces(self, image, threshold=0.8):
+	def crop_faces(self, image, threshold=0.8) -> tuple[list[np.ndarray], list[float]]:
 		results = self(image)
 
 		# filter out boxes with lower probability than threshold
 		if threshold is not None:
-			boxes = [result for result in results if result['prob'] > threshold]
+			results = [result for result in results if result['prob'] > threshold]
 
 		# crop faces
 		faces = []
-		for box in boxes:
-			l, t, r, b = box['box']
+		probs = []
+		for result in results:
+			l, t, r, b = result['box']
 			l, t, r, b = int(l), int(t), int(r), int(b)
 
 			# crop face
 			face = image[t:b, l:r]
 			faces.append(face)
+			probs.append(result['prob'])
 
-		return faces
+		return faces, probs
 
 def show_image_with_boxes(image, result):
 	# show image with boxes
