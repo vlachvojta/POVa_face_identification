@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
 from datasets.data_loader import Partition
+from datasets.image_preprocessor import ImagePreProcessorMTCNN
 from face_detection.face_detection_engine import FaceDetectionEngine
 from face_identification.face_embedding_models import FacenetPytorchWrapper, NetUtils
 from face_identification.face_embedding_models import *  # TODO: try to eliminate this import
@@ -42,6 +43,7 @@ def parse_arguments():
     parser.add_argument("-o", "--output-path", required=True, type=str, help="Path to the output folder.")
     parser.add_argument("--config", type=str, default=None, help="Path to model config")
     parser.add_argument("--render", action="store_true", help="Render validation samples.")
+    parser.add_argument("--detect-faces", action="store_true", help="Detect faces in images using MTCNN from facenet_pytorch.")
 
     # Trainer settings
     parser.add_argument("--max-iter", default=100_000, type=int)
@@ -73,11 +75,13 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Running on: {device}")
 
-    logging.info("Loading datasets ...")
+    logging.info("Loading datasets ...")    
+    preprocessor = ImagePreProcessorMTCNN(device=device) if args.detect_faces else None
+
     trn_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.TRAIN, sequential_classes=True)
+        args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor)
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, limit=args.val_size, balance_subset=True)
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_subset=True)
 
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
@@ -207,7 +211,7 @@ def train(
 
             monitor.add_value("view_time", t2 - t1)
             log_string = monitor.get_last_string()
-            print(f"{log_string}")
+            print(f"\n{log_string}")
 
             monitor.report_results()
             monitor.save_csv()

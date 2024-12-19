@@ -140,7 +140,7 @@ def create_class_embeddings(embedding_engine: FaceEmbeddingEngine, images: list[
     for class_name, class_id in unique_classes.items():
         # class images = images where class_id == class_ids
         class_images = images[np.where(np.array(class_ids) == class_id)]
-        print(f'creating class embedding for {class_name} with {len(class_images)} images')
+        # print(f'creating class embedding for {class_name} with {len(class_images)} images')
 
         class_embedding = create_class_embedding(embedding_engine, class_images, class_embedding_style)
 

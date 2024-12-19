@@ -1,13 +1,14 @@
 import os
 import csv
 from enum import Enum
-from PIL import Image
 
+from PIL import Image
+import cv2
 import numpy as np
 
 from datasets.data_structure import ImageData
 from datasets.data_parser import DataParser
-
+from datasets.image_preprocessor import ImagePreProcessor
 
 class Partition(Enum):
     TRAIN = 0
@@ -16,8 +17,10 @@ class Partition(Enum):
 
 class DataLoader:
     def __init__(self, data_path, partition=Partition.TRAIN, filter_class = 0, filter_attributes = [],
-                 sequential_classes: bool = False, limit: int = None, balance_subset: bool = False):
+                 sequential_classes: bool = False, limit: int = None, balance_subset: bool = False,
+                 image_preprocessor: ImagePreProcessor = None):
         self.data_path = data_path
+        self.image_preprocessor = image_preprocessor
 
         if not os.path.exists(f"{self.data_path}/annotations.csv"):
             DataParser.parse(self.data_path)
@@ -54,6 +57,13 @@ class DataLoader:
     def __getitem__(self, index):
         # Open image and return the whole object
         self.data[index].image = Image.open(f"{self.data_path}/Img/img_align_celeba/{self.data[index].filename}")
+
+        if self.image_preprocessor:
+            save_image = self.data[index].id == 42  # save debug image
+            image = np.array(self.data[index].image)
+            image = self.image_preprocessor(image, save_image=save_image, image_src=self.data[index].filename)
+            self.data[index].image = image
+
         return self.data[index]
 
     def unique_classes(self):
@@ -93,12 +103,14 @@ class DataLoader:
 
         return data
 
+
 class DataLoaderTorchWrapper(DataLoader):
     """Wrapper for DataLoader to allow automatic pytorch batching."""
     def __getitem__(self, index):
         item = super().__getitem__(index)
 
         image = np.array(item.image)
+        # orig_image = image.copy()
         assert image.ndim == 3, f"Image should have 3 dimensions (H, W, C) or (C, H, W), got {image.ndim} dimensions with shape {image.shape}"
 
         if image.shape[2] == 3:  # Engines need images in RGB format [3, H, W]

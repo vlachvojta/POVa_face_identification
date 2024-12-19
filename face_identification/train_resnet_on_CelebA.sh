@@ -17,6 +17,7 @@ python train.py \
     --output-path $OUTPUT_PATH \
     --config $output_path/config.json \
     --render \
+    --detect-faces \
     --max-iter 1000 \
     --view-step 5 \
     --save-step 5 \
