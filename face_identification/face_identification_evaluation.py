@@ -11,7 +11,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.ORL_dataset import ORLDataset
 from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
-from datasets.data_loader import Partition, Squarify, Normalization
+from datasets.data_loader import Partition
+from datasets.image_preprocessor import ImagePreProcessor, Squarify, Normalization, ImagePreProcessorMTCNN
 from face_detection.face_detection_engine import FaceDetectionEngine
 from face_identification.face_embedding_engine import FaceEmbeddingEngine, ResnetEmbeddingEngine
 from face_identification.face_identification_engine import FaceIdentificationEngine, DistanceFunction, ClassEmbeddingStyle, distance_criterium_is_max
@@ -160,7 +161,7 @@ def test_evaluation_with_ORL_dataset():
 def test_preprocessing_of_CelebA_images_val_set():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    face_detection_engine = FaceDetectionEngine(device=device)
+    face_detection_engine = FaceDetectionEngine(device=device, keep_all=False)
     embedding_engine = ResnetEmbeddingEngine(device=device, verbose=False)
 
     output_path = 'tmp-renders/'
@@ -168,33 +169,42 @@ def test_preprocessing_of_CelebA_images_val_set():
     os.makedirs(output_path, exist_ok=True)
 
     # test every option in data_loader.py
-    normalize_options = [None, Normalization._0_1, Normalization._1_1, Normalization.MEAN_STD, Normalization.MIN_MAX]
+    normalize_options = [Normalization._0_1, Normalization._1_1, Normalization.MEAN_STD, Normalization.MIN_MAX]
     squarify_options = [Squarify.AROUND_FACE, None, Squarify.CROP]
-    resize_options = [None, 160]
+    resize_options = [160]
 
     results=[]
+
+    mtcnn_strict_preprocessor = ImagePreProcessorMTCNN()
+    test_preprocessing_config(face_detection_engine, embedding_engine, None, None, None, results, preprocessor=mtcnn_strict_preprocessor)
+    test_preprocessing_config(face_detection_engine, embedding_engine, None, Squarify.AROUND_FACE_STRICT, None, results)
 
     for normalize in normalize_options:
         for squarify in squarify_options:
             for resize in resize_options:
                 print(f'\nTesting: Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
-
-                val_dataset = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
-                    sequential_classes=True, face_detection_engine=face_detection_engine, balance_subset=True, #limit=1000,
-                    normalize=normalize, squarify=squarify, resize=resize)
-                print('')
-                accuracy = evaluate_dataset(val_dataset, embedding_engine)
-
-                results.append((normalize, squarify, resize, accuracy))
-                print(f'results so far:')
-                for normalize, squarify, resize, accuracy in results:
-                    print(f'Accuracy: {accuracy:.3f}, Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
+                test_preprocessing_config(face_detection_engine, embedding_engine, normalize, squarify, resize, results)
 
     print('--------------------')
     print('Final results:')
     for normalize, squarify, resize, accuracy in results:
         print(f'Accuracy: {accuracy:.3f}, Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
 
+def test_preprocessing_config(face_detection_engine, embedding_engine, normalize, squarify, resize, results, preprocessor=None):
+    if preprocessor is None:
+        preprocessor = ImagePreProcessor(face_detection_engine=face_detection_engine,
+                                        squarify=squarify, normalize=normalize, resize=resize)
+
+    val_dataset = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
+                                   sequential_classes=True, balance_subset=True, limit=1000,
+                                   image_preprocessor=preprocessor)
+    print('')
+    accuracy = evaluate_dataset(val_dataset, embedding_engine)
+
+    results.append((normalize, squarify, resize, accuracy))
+    print(f'results so far:')
+    for normalize, squarify, resize, accuracy in results:
+        print(f'Accuracy: {accuracy:.3f}, Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
 
 def evaluate_dataset(val_dataset, embedding_engine):
     all_images = []

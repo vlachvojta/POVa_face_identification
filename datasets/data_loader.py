@@ -8,7 +8,7 @@ import numpy as np
 
 from datasets.data_structure import ImageData
 from datasets.data_parser import DataParser
-
+from datasets.image_preprocessor import ImagePreProcessor
 
 class Partition(Enum):
     TRAIN = 0
@@ -17,8 +17,10 @@ class Partition(Enum):
 
 class DataLoader:
     def __init__(self, data_path, partition=Partition.TRAIN, filter_class = 0, filter_attributes = [],
-                 sequential_classes: bool = False, limit: int = None, balance_subset: bool = False):
+                 sequential_classes: bool = False, limit: int = None, balance_subset: bool = False,
+                 image_preprocessor: ImagePreProcessor = None):
         self.data_path = data_path
+        self.image_preprocessor = image_preprocessor
 
         if not os.path.exists(f"{self.data_path}/annotations.csv"):
             DataParser.parse(self.data_path)
@@ -55,6 +57,13 @@ class DataLoader:
     def __getitem__(self, index):
         # Open image and return the whole object
         self.data[index].image = Image.open(f"{self.data_path}/Img/img_align_celeba/{self.data[index].filename}")
+
+        if self.image_preprocessor:
+            save_image = self.data[index].id == 42  # save debug image
+            image = np.array(self.data[index].image)
+            image = self.image_preprocessor(image, save_image=save_image, image_src=self.data[index].filename)
+            self.data[index].image = image
+
         return self.data[index]
 
     def unique_classes(self):
@@ -94,120 +103,15 @@ class DataLoader:
 
         return data
 
-class Normalization(Enum):
-    MEAN_STD = "mean_std"
-    MIN_MAX = "min_max"
-    _0_1 = "0_1"
-    _1_1 = "1_1"
-
-class Squarify(Enum):
-    CROP = "crop"
-    AROUND_FACE = "around_face"
 
 class DataLoaderTorchWrapper(DataLoader):
     """Wrapper for DataLoader to allow automatic pytorch batching."""
-    def __init__(self, data_path, face_detection_engine=None, squarify: Squarify = None,
-                 normalize: Normalization = None, resize: int = None, *args, **kwargs):
-        super().__init__(data_path, *args, **kwargs)
-        self.face_detection_engine = face_detection_engine
-        self.squarify = squarify
-        self.normalize = normalize
-        self.resize = resize
-
     def __getitem__(self, index):
         item = super().__getitem__(index)
 
         image = np.array(item.image)
-        orig_image = image.copy()
+        # orig_image = image.copy()
         assert image.ndim == 3, f"Image should have 3 dimensions (H, W, C) or (C, H, W), got {image.ndim} dimensions with shape {image.shape}"
-
-        if self.squarify:
-            if self.squarify == Squarify.CROP:
-                # crop the image to make it square
-                h, w = image.shape[:2]
-                if h > w:
-                    image = image[(h - w) // 2:(h + w) // 2, :]
-                elif w > h:
-                    image = image[:, (w - h) // 2:(w + h) // 2]
-            elif self.squarify == Squarify.AROUND_FACE:
-                # detect face box and crop the image around the face
-                assert self.face_detection_engine, "Face detection engine must be provided to squarify around face."
-                results = self.face_detection_engine(image)
-                if results and len(results) > 0:
-                    result = results[0]
-                    padding = 20
-                    face = result['box']
-                    l, t, r, b = face
-                    l, t, r, b = int(l), int(t), int(r), int(b)
-                    l = max(0, l - padding)
-                    t = max(0, t - padding)
-                    r = min(image.shape[1], r + padding)
-                    b = min(image.shape[0], b + padding)
-                    # crop face and pad to make it square
-                    if b - t > r - l:
-                        pad = (b - t - (r - l)) // 2
-                        l = max(0, l - pad)
-                        r = min(image.shape[1], r + pad)
-                    elif r - l > b - t:
-                        pad = (r - l - (b - t)) // 2
-                        t = max(0, t - pad)
-                        b = min(image.shape[0], b + pad)
-
-                    t = max(0, t)
-                    b = min(image.shape[0], b)
-                    l = max(0, l)
-                    r = min(image.shape[1], r)
-                    # complete squarify if needed
-                    h, w = b - t, r - l
-                    if h > w:
-                        pad = (h - w) // 2
-                        l = max(0, l - pad)
-                        r = min(image.shape[1], r + pad)
-                    elif w > h:
-                        pad = (w - h) // 2
-                        t = max(0, t - pad)
-                        b = min(image.shape[0], b + pad)
-                    image = image[t:b, l:r]
-                    # print(f'Squarified around face: {face} -> {l, t, r, b} (w: {r-l}, h: {t-b}), shape: {image.shape} orig shape: {orig_image.shape}')
-                    image = cv2.resize(image, (160, 160))
-                else:
-                    print(f"Skipping squarify around face on image {item.filename} as no face was detected.")
-                    # crop the image to make it square
-                    h, w = image.shape[:2]
-                    if h > w:
-                        image = image[(h - w) // 2:(h + w) // 2, :]
-                    elif w > h:
-                        image = image[:, (w - h) // 2:(w + h) // 2]
-                    image = cv2.resize(image, (160, 160))
-
-        if self.resize:
-            image = cv2.resize(image, (self.resize, self.resize))
-
-        if index == 42:  # debug image
-            image_with_background = np.zeros_like(orig_image)
-            image_with_background[:image.shape[0], :image.shape[1]] = image
-            image_render = np.hstack([orig_image, image_with_background])
-            tmp_path = "tmp-renders/"
-            os.makedirs(tmp_path, exist_ok=True)
-            existing_names = os.listdir(tmp_path)
-            img_name = f'squarify_{self.squarify}_norm_{self.normalize}_resize_{self.resize}.png'
-            img_path = os.path.join(tmp_path, img_name)
-            # print('Saving debug image:', img_path)
-            cv2.imwrite(img_path, image_render)
-
-        if self.normalize:
-            if self.normalize == Normalization.MEAN_STD:
-                image = (image - 127.5) / 128.0
-            elif self.normalize == Normalization.MIN_MAX:
-                image = (image - image.min()) / (image.max() - image.min())
-            elif self.normalize == Normalization._0_1:
-                image = image / 255.0
-                # rescale to [0, 1]
-            elif self.normalize == Normalization._1_1:
-                image = image / 127.5 - 1.0
-                # rescale to [-1, 1]
-            else:
-                raise ValueError(f"Unknown normalization method: {self.normalize}")
 
         if image.shape[2] == 3:  # Engines need images in RGB format [3, H, W]
             image = image.transpose(2, 0, 1)
