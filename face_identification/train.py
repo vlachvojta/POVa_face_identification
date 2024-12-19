@@ -5,6 +5,9 @@ import argparse
 import time
 import json
 import re
+import math
+import numpy as np
+from PIL import Image, ImageDraw
 
 import torch
 import torch.nn.functional as F
@@ -181,6 +184,10 @@ def train(
         loss.backward()
         optimizer.step()
         train_losses.append(loss.item())
+        
+        if render:
+            image_name = f"{iteration}_loss_{loss.item():.4f}.png"
+            render_batch_images(images = images, path = f"{output_path}/train", filename = image_name)
 
         if iteration % view_step == 0:
             t2 = time.time()
@@ -199,6 +206,8 @@ def train(
                     device=device,
                     monitor=monitor,
                     render=render,
+                    output_path=output_path,
+                    training_iter = iteration,
                 )
 
             monitor.add_value("view_time", t2 - t1)
@@ -216,6 +225,8 @@ def validate(
     model: torch.nn.Module,
     data_loader: torch.utils.data.DataLoader,
     data_loader_name: str,
+    output_path: str,
+    training_iter: int,
     criterion: torch.nn.Module,
     device: torch.device,
     monitor: TrainingMonitor,
@@ -225,6 +236,7 @@ def validate(
     total_loss = 0.0
     total_correct = 0
     total_samples = 0
+    batch_losses = []
 
     model.eval()
     with torch.no_grad():
@@ -239,6 +251,7 @@ def validate(
             
             loss = criterion(embeddings, classes)
             total_loss += loss.item() * len(images)
+            batch_losses.append((i, loss.item(), images))
 
             total_samples += len(images)
 
@@ -248,6 +261,14 @@ def validate(
             end = start + len(embeddings)
             embeddings_all[start:end] = embeddings
             classes_all[start:end] = classes
+    
+    worst_batches = sorted(batch_losses, key=lambda x: x[1], reverse=True)[:3]
+    
+    if render:
+        for batch_index, loss, images in worst_batches:
+            image_name = f"{training_iter}_{batch_index}_loss_{loss:.4f}.png"
+            render_batch_images(images=images, path=f"{output_path}/val", filename=image_name)
+
 
     # calculate average loss
     avg_loss = total_loss / total_samples
@@ -347,6 +368,35 @@ def save_model(model: NetUtils, output_path: str, trained_steps: int):
 
     return model_path
 
+def render_batch_images(images: torch.Tensor, path: str, filename: str):
+   
+    os.makedirs(path, exist_ok=True)
+    
+    images_np = images.cpu().numpy()
+    images_np = images_np.transpose(0, 2, 3, 1)
+    
+    images_np = (images_np - images_np.min()) / (images_np.max() - images_np.min())
+    images_np = (images_np * 255).astype(np.uint8)
+    
+    batch_size = images_np.shape[0]
+    grid_side = math.ceil(math.sqrt(batch_size))
+    grid_size = (grid_side, grid_side)
+    
+    rows, cols = grid_size
+    img_height, img_width, img_channels = images_np.shape[1:]
+    canvas_height = rows * img_height
+    canvas_width = cols * img_width
+    canvas = Image.new("RGB", (canvas_width, canvas_height), (255, 255, 255))
+    
+    for idx, image in enumerate(images_np):
+        row, col = divmod(idx, cols)
+        if row >= rows:
+            break
+        img = Image.fromarray(image)
+        canvas.paste(img, (col * img_width, row * img_height))
+    
+    output_file = os.path.join(path, filename)
+    canvas.save(output_file)
 
 if __name__ == "__main__":
     main()
