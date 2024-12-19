@@ -76,7 +76,7 @@ def main():
     logging.info(f"Running on: {device}")
 
     logging.info("Loading datasets ...")    
-    preprocessor = ImagePreProcessorMTCNN() if args.detect_faces else None
+    preprocessor = ImagePreProcessorMTCNN(device=device) if args.detect_faces else None
 
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor)
