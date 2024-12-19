@@ -102,7 +102,6 @@ class Normalization(Enum):
 
 class Squarify(Enum):
     CROP = "crop"
-    PAD = "pad"
     AROUND_FACE = "around_face"
 
 class DataLoaderTorchWrapper(DataLoader):
@@ -122,37 +121,28 @@ class DataLoaderTorchWrapper(DataLoader):
         orig_image = image.copy()
         assert image.ndim == 3, f"Image should have 3 dimensions (H, W, C) or (C, H, W), got {image.ndim} dimensions with shape {image.shape}"
 
-        # # Crop face from image
-        # if self.face_detection_engine:
-        #     faces, probs = self.face_detection_engine.crop_faces(image)
-        #     if len(faces) > 1:
-        #         # pick the face with the highest probability
-        #         image = faces[np.argmax(probs)]
-        #     elif len(faces) == 1:
-        #         image = faces[0]
-
-        #     if image.shape[0] == 0 or image.shape[1] == 0:
-        #         print(f"Skipping face detection on image {item.filename} as it has zero width or height after face detection. shape: {image.shape}")
-        #         image = orig_image
-
         if self.squarify:
-            if self.squarify == Squarify.PAD:
-                # pad the image to make it square
+            if self.squarify == Squarify.CROP:
+                # crop the image to make it square
                 h, w = image.shape[:2]
                 if h > w:
-                    pad = (h - w) // 2
-                    image = cv2.copyMakeBorder(image, 0, 0, pad, pad, cv2.BORDER_CONSTANT, value=0)
+                    image = image[(h - w) // 2:(h + w) // 2, :]
                 elif w > h:
-                    pad = (w - h) // 2
-                    image = cv2.copyMakeBorder(image, pad, pad, 0, 0, cv2.BORDER_CONSTANT, value=0)
+                    image = image[:, (w - h) // 2:(w + h) // 2]
             elif self.squarify == Squarify.AROUND_FACE:
                 # detect face box and crop the image around the face
                 assert self.face_detection_engine, "Face detection engine must be provided to squarify around face."
-                result = self.face_detection_engine(image)[0]
-                if result:
+                results = self.face_detection_engine(image)
+                if results and len(results) > 0:
+                    result = results[0]
+                    padding = 20
                     face = result['box']
                     l, t, r, b = face
                     l, t, r, b = int(l), int(t), int(r), int(b)
+                    l = max(0, l - padding)
+                    t = max(0, t - padding)
+                    r = min(image.shape[1], r + padding)
+                    b = min(image.shape[0], b + padding)
                     # crop face and pad to make it square
                     if b - t > r - l:
                         pad = (b - t - (r - l)) // 2
@@ -178,13 +168,32 @@ class DataLoaderTorchWrapper(DataLoader):
                         t = max(0, t - pad)
                         b = min(image.shape[0], b + pad)
                     image = image[t:b, l:r]
-
+                    # print(f'Squarified around face: {face} -> {l, t, r, b} (w: {r-l}, h: {t-b}), shape: {image.shape} orig shape: {orig_image.shape}')
+                    image = cv2.resize(image, (160, 160))
                 else:
                     print(f"Skipping squarify around face on image {item.filename} as no face was detected.")
-                    image = orig_image
+                    # crop the image to make it square
+                    h, w = image.shape[:2]
+                    if h > w:
+                        image = image[(h - w) // 2:(h + w) // 2, :]
+                    elif w > h:
+                        image = image[:, (w - h) // 2:(w + h) // 2]
+                    image = cv2.resize(image, (160, 160))
 
         if self.resize:
             image = cv2.resize(image, (self.resize, self.resize))
+
+        if index == 42:  # debug image
+            image_with_background = np.zeros_like(orig_image)
+            image_with_background[:image.shape[0], :image.shape[1]] = image
+            image_render = np.hstack([orig_image, image_with_background])
+            tmp_path = "tmp-renders/"
+            os.makedirs(tmp_path, exist_ok=True)
+            existing_names = os.listdir(tmp_path)
+            img_name = f'squarify_{self.squarify}_norm_{self.normalize}_resize_{self.resize}.png'
+            img_path = os.path.join(tmp_path, img_name)
+            # print('Saving debug image:', img_path)
+            cv2.imwrite(img_path, image_render)
 
         if self.normalize:
             if self.normalize == Normalization.MEAN_STD:
@@ -193,8 +202,10 @@ class DataLoaderTorchWrapper(DataLoader):
                 image = (image - image.min()) / (image.max() - image.min())
             elif self.normalize == Normalization._0_1:
                 image = image / 255.0
+                # rescale to [0, 1]
             elif self.normalize == Normalization._1_1:
                 image = image / 127.5 - 1.0
+                # rescale to [-1, 1]
             else:
                 raise ValueError(f"Unknown normalization method: {self.normalize}")
 

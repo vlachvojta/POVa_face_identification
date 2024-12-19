@@ -1,5 +1,6 @@
 datasets/ORL_dataset_class_wise/
 face_identification/tmp/*
+face_identification/tmp-renders/*
 local/*
 datasets/CelebA
 *vscode

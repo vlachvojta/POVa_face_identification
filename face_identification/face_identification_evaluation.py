@@ -2,11 +2,17 @@ import os
 import sys
 import numpy as np
 from dataclasses import dataclass
+import shutil
+
+import torch
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.ORL_dataset import ORLDataset
+from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
+from datasets.data_loader import Partition, Squarify, Normalization
+from face_detection.face_detection_engine import FaceDetectionEngine
 from face_identification.face_embedding_engine import FaceEmbeddingEngine, ResnetEmbeddingEngine
 from face_identification.face_identification_engine import FaceIdentificationEngine, DistanceFunction, ClassEmbeddingStyle, distance_criterium_is_max
 
@@ -72,7 +78,7 @@ class FaceIdentificationEvaluation:
         self.top_n_hits = np.zeros(len(self.class_hits), dtype=int)
 
         for i, (image, target_class) in enumerate(zip(images, target_classes)):
-            if i and i % self.print_interval == 0:
+            if i and self.print_interval and i % self.print_interval == 0:
                 print(f'Processed {i}/{len(images)} images.')
                 self.print_stats()
                 print('')
@@ -97,9 +103,13 @@ class FaceIdentificationEvaluation:
 
             self.processed += 1
 
-        self.print_stats()
+        if self.print_interval:
+            self.print_stats()
+        self.print_stats(limited=True)
 
-    def print_stats(self):
+        return self.target_hit / self.processed
+
+    def print_stats(self, limited: bool = False):
         print(f'Target hits: {self.target_hit/self.processed*100:.2f}% ({self.target_hit}/{self.processed})')
         print(f'Skipped: {self.skipped}')
 
@@ -109,6 +119,8 @@ class FaceIdentificationEvaluation:
                 hits = self.top_n_hits[top_n-1]
                 percentage = f'{hits/self.processed*100:.2f}%'
                 print(f'\ttop_{top_n}: {percentage:<7} ({hits}/{self.processed})')
+        if limited:
+            return
 
         print(f'Class hits:')
         for class_id in sorted(self.class_hits, key=lambda x: int(x)):
@@ -145,5 +157,82 @@ def test_evaluation_with_ORL_dataset():
     evaluation(dataset.images, dataset.targets)
 
 
+def test_preprocessing_of_CelebA_images_val_set():
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    face_detection_engine = FaceDetectionEngine(device=device)
+    embedding_engine = ResnetEmbeddingEngine(device=device, verbose=False)
+
+    output_path = 'tmp-renders/'
+    shutil.rmtree(output_path)
+    os.makedirs(output_path, exist_ok=True)
+
+    # test every option in data_loader.py
+    normalize_options = [None, Normalization._0_1, Normalization._1_1, Normalization.MEAN_STD, Normalization.MIN_MAX]
+    squarify_options = [Squarify.AROUND_FACE, None, Squarify.CROP]
+    resize_options = [None, 160]
+
+    results=[]
+
+    for normalize in normalize_options:
+        for squarify in squarify_options:
+            for resize in resize_options:
+                print(f'\nTesting: Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
+
+                val_dataset = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
+                    sequential_classes=True, face_detection_engine=face_detection_engine, balance_subset=True, #limit=1000,
+                    normalize=normalize, squarify=squarify, resize=resize)
+                print('')
+                accuracy = evaluate_dataset(val_dataset, embedding_engine)
+
+                results.append((normalize, squarify, resize, accuracy))
+                print(f'results so far:')
+                for normalize, squarify, resize, accuracy in results:
+                    print(f'Accuracy: {accuracy:.3f}, Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
+
+    print('--------------------')
+    print('Final results:')
+    for normalize, squarify, resize, accuracy in results:
+        print(f'Accuracy: {accuracy:.3f}, Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
+
+
+def evaluate_dataset(val_dataset, embedding_engine):
+    all_images = []
+    all_classes = []
+
+    # for i in range(50):
+    for i in range(len(val_dataset)):
+        item = val_dataset[i]
+        all_images.append(item['image'])
+        all_classes.append(item['class'])
+
+    all_images = np.array(all_images)
+    all_classes = np.array(all_classes)
+
+    # initialize face identification engine
+    identification_engine = FaceIdentificationEngine(embedding_engine, all_images, all_classes,
+                                                     class_embedding_style=ClassEmbeddingStyle.FIRST,
+                                                     class_embedding_file='tmp/class_embeddings.npy',
+                                                     force_new_class_embeddings=True)
+
+    evaluation = FaceIdentificationEvaluation(identification_engine, print_interval=None) #100)
+
+    # all_images = all_images[:50]
+    # all_classes = all_classes[:50]
+
+    all_images, all_classes = delete_first_of_each_class(all_images, all_classes)
+
+    return evaluation(all_images, all_classes)
+
+def delete_first_of_each_class(images, classes):
+    unique_classes = np.unique(classes)
+    for class_id in unique_classes:
+        idx = np.where(classes == class_id)[0][0]
+        images = np.delete(images, idx, axis=0)
+        classes = np.delete(classes, idx)
+
+    return images, classes
+
 if __name__ == '__main__':
-    test_evaluation_with_ORL_dataset()
+    # test_evaluation_with_ORL_dataset()
+    test_preprocessing_of_CelebA_images_val_set()
