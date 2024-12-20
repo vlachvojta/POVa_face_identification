@@ -14,7 +14,7 @@ from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
 from datasets.data_loader import Partition
 from datasets.image_preprocessor import ImagePreProcessor, Squarify, Normalization, ImagePreProcessorMTCNN
 from face_detection.face_detection_engine import FaceDetectionEngine
-from face_identification.face_embedding_engine import FaceEmbeddingEngine, ResnetEmbeddingEngine
+from face_identification.face_embedding_engine import FaceEmbeddingEngine, FacenetEmbeddingEngine
 from face_identification.face_identification_engine import FaceIdentificationEngine, DistanceFunction, ClassEmbeddingStyle, distance_criterium_is_max
 
 
@@ -145,7 +145,7 @@ class FaceIdentificationEvaluation:
 
 def test_evaluation_with_ORL_dataset():
     dataset = ORLDataset()
-    embedding_engine = ResnetEmbeddingEngine(device='cpu', verbose=False)
+    embedding_engine = FacenetEmbeddingEngine(device='cpu', verbose=False)
 
     # initialize face identification engine
     identification_engine = FaceIdentificationEngine(embedding_engine, dataset.images, dataset.targets,
@@ -162,7 +162,7 @@ def test_preprocessing_of_CelebA_images_val_set():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     face_detection_engine = FaceDetectionEngine(device=device, keep_all=False)
-    embedding_engine = ResnetEmbeddingEngine(device=device, verbose=False)
+    embedding_engine = FacenetEmbeddingEngine(device=device, verbose=False)
 
     output_path = 'tmp-renders/'
     shutil.rmtree(output_path)

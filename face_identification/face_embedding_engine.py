@@ -40,7 +40,7 @@ class FaceEmbeddingEngine:
         return np.array(Image.open(image_path))
 
 
-class ResnetEmbeddingEngine(FaceEmbeddingEngine):
+class FacenetEmbeddingEngine(FaceEmbeddingEngine):
     INPUT_PIXELS = 160
     DIM = 512
 
@@ -74,7 +74,7 @@ class ResnetEmbeddingEngine(FaceEmbeddingEngine):
 
 def example_usage_one_image():
     import matplotlib.pyplot as plt
-    engine = ResnetEmbeddingEngine()
+    engine = FacenetEmbeddingEngine()
     dataset = ORLDataset()
 
     # test the engine with one image
@@ -90,7 +90,7 @@ def example_usage_one_image():
 
 def example_usage_batch_images():
     import matplotlib.pyplot as plt
-    engine = ResnetEmbeddingEngine()
+    engine = FacenetEmbeddingEngine()
     dataset = ORLDataset()
 
     # test the engine with multiple images (batch)
