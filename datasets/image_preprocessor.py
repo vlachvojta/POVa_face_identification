@@ -12,21 +12,24 @@ from datasets.data_structure import ImageData
 from datasets.data_parser import DataParser
 from face_detection.face_detection_engine import FaceDetectionEngine
 
+from torchvision import transforms
 
 class Normalization(Enum):
     MEAN_STD = "mean_std"
     MIN_MAX = "min_max"
     _0_1 = "0_1"
     _1_1 = "1_1"
+    IMAGE_NET = "imagenet"
 
 
 class Squarify(Enum):
     CROP = "crop"
     AROUND_FACE = "around_face"
-    AROUND_FACE_STRICT = "around_face_strict"
+    AROUND_FACE_STRICT = "around_face_strict"  # uses MTCNN to detect face
 
 
 class ImagePreProcessor:
+    DEFAULT_RESIZE = 224
     def __init__(self, face_detection_engine=None, squarify: Squarify = None,
                  normalize: Normalization = None, resize: int = None):
         self.face_detection_engine = face_detection_engine
@@ -69,6 +72,20 @@ class ImagePreProcessor:
             elif self.normalize == Normalization._1_1:
                 image = image / 127.5 - 1.0
                 # rescale to [-1, 1]
+            elif self.normalize == Normalization.IMAGE_NET:
+                if image.shape[0] == 3:
+                    image = image.transpose(1, 2, 0)
+                # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # image = Image.fromarray(image)
+                preprocess = transforms.Compose([   # THE IMAGE NET TRANSFORMS
+                    # transforms.Resize((224, 224)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225]
+                    )
+                ])
+                image = preprocess(image)
             else:
                 raise ValueError(f"Unknown normalization method: {self.normalize}")
 
@@ -120,14 +137,25 @@ class ImagePreProcessor:
                     b = min(image.shape[0], b + pad)
                 image = image[t:b, l:r]
                 # print(f'Squarified around face: {face} -> {l, t, r, b} (w: {r-l}, h: {t-b}), shape: {image.shape} orig shape: {orig_image.shape}')
-                image = cv2.resize(image, (160, 160))
+                if self.resize:
+                    image = cv2.resize(image, (self.resize, self.resize))
+                else:
+                    image = cv2.resize(image, (self.DEFAULT_RESIZE, self.DEFAULT_RESIZE))
                 return image
             else:
                 print(f"Skipping squarify around face on image {image_src} as no face was detected.")
-                return self.squarify_crop(image)
+                image = self.squarify_crop(image)
+                if self.resize:
+                    image = cv2.resize(image, (self.resize, self.resize))
+                else:
+                    image = cv2.resize(image, (self.DEFAULT_RESIZE, self.DEFAULT_RESIZE))
+                return image
         elif self.squarify == Squarify.AROUND_FACE_STRICT:
             assert self.face_detection_engine, "Face detection engine must be provided to squarify around face."
-            return self.face_detection_engine.strict_detection(image, image_src)
+            face = np.array(self.face_detection_engine.strict_detection(image, image_src))
+            # uses MTCNN to detect face
+            # the face is squished face (detected rectangle bounding box is resized to 160x160)
+            return face.transpose(1, 2, 0) # [3, 160, 160] -> [160, 160, 3] (for other engines)
         else:
             raise ValueError(f"Unknown squarify method: {self.squarify}")
 
@@ -148,3 +176,10 @@ class ImagePreProcessorMTCNN(ImagePreProcessor):
         self.face_detection_engine = FaceDetectionEngine(device=device, keep_all=False)
         super().__init__(face_detection_engine=self.face_detection_engine, 
                          squarify=Squarify.AROUND_FACE_STRICT, normalize=None, resize=None)
+
+
+class ImagePreProcessorResnet(ImagePreProcessor):
+    def __init__(self, device: str = 'cpu'):
+        self.face_detection_engine = FaceDetectionEngine(device=device, keep_all=False)
+        super().__init__(face_detection_engine=self.face_detection_engine, 
+                         squarify=Squarify.AROUND_FACE, normalize=Normalization.IMAGE_NET, resize=160)

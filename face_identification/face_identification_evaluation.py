@@ -12,9 +12,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datasets.ORL_dataset import ORLDataset
 from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
 from datasets.data_loader import Partition
-from datasets.image_preprocessor import ImagePreProcessor, Squarify, Normalization, ImagePreProcessorMTCNN
+from datasets.image_preprocessor import ImagePreProcessor, Squarify, Normalization, ImagePreProcessorMTCNN, ImagePreProcessorResnet
 from face_detection.face_detection_engine import FaceDetectionEngine
-from face_identification.face_embedding_engine import FaceEmbeddingEngine, FacenetEmbeddingEngine
+from face_identification.face_embedding_engine import FaceEmbeddingEngine, FacenetEmbeddingEngine, BasicResnetEmbeddingEngine
 from face_identification.face_identification_engine import FaceIdentificationEngine, DistanceFunction, ClassEmbeddingStyle, distance_criterium_is_max
 
 
@@ -158,6 +158,41 @@ def test_evaluation_with_ORL_dataset():
     evaluation(dataset.images, dataset.targets)
 
 
+def test_resnet_sanity_check():
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    face_detection_engine = FaceDetectionEngine(device=device, keep_all=False)
+    embedding_engine = BasicResnetEmbeddingEngine(device=device, verbose=False)
+
+    output_path = 'tmp-renders/'
+    shutil.rmtree(output_path)
+    os.makedirs(output_path, exist_ok=True)
+
+    results=[]
+
+    imagenet_preprocessor = ImagePreProcessorResnet()
+    test_preprocessing_config(face_detection_engine, embedding_engine, None, None, None, results, preprocessor=imagenet_preprocessor)
+    test_preprocessing_config(
+        face_detection_engine, embedding_engine, 
+        Normalization.IMAGE_NET, Squarify.AROUND_FACE, 160, results)
+
+    # test every option in data_loader.py
+    # normalize_options = [Normalization.IMAGE_NET, Normalization._0_1, Normalization._1_1, Normalization.MEAN_STD, Normalization.MIN_MAX]
+    # normalize_options = [Normalization._1_1, Normalization.MEAN_STD, Normalization.MIN_MAX]
+    # squarify_options = [Squarify.AROUND_FACE, Squarify.AROUND_FACE_STRICT, None, Squarify.CROP]
+    # resize_options = [160, 224]
+
+    # for normalize in normalize_options:
+    #     for squarify in squarify_options:
+    #         for resize in resize_options:
+    #             print(f'\nTesting: Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
+    #             test_preprocessing_config(face_detection_engine, embedding_engine, normalize, squarify, resize, results)
+
+    print('\n--------------------')
+    print('Final results:')
+    for normalize, squarify, resize, accuracy in results:
+        print(f'Accuracy: {accuracy:.3f}, Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
+
 def test_preprocessing_of_CelebA_images_val_set():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -185,7 +220,7 @@ def test_preprocessing_of_CelebA_images_val_set():
                 print(f'\nTesting: Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
                 test_preprocessing_config(face_detection_engine, embedding_engine, normalize, squarify, resize, results)
 
-    print('--------------------')
+    print('\n--------------------')
     print('Final results:')
     for normalize, squarify, resize, accuracy in results:
         print(f'Accuracy: {accuracy:.3f}, Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}')
@@ -244,5 +279,6 @@ def delete_first_of_each_class(images, classes):
     return images, classes
 
 if __name__ == '__main__':
-    # test_evaluation_with_ORL_dataset()
-    test_preprocessing_of_CelebA_images_val_set()
+    test_evaluation_with_ORL/_dataset()
+    # test_preprocessing_of_CelebA_images_val_set()
+    # test_resnet_sanity_check()

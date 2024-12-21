@@ -38,3 +38,9 @@ Data: Val dataset (first 1000 images)
 |       --      |        CROP        |     --     |     0.023    |
 |       --      |        CROP        |     160    |     0.023    |
 
+
+Je to nějaký divný, padalo mi to v průběhu a při dalším měření už to vyšlo jinak, idk....									
+Accuracy: 0.079, Normalize: Normalization.IMAGE_NET, Squarify: Squarify.AROUND_FACE, Resize: None     Accuracy: 0.031, Normalize: Normalization.IMAGE_NET, Squarify: Squarify.AROUND_FACE_STRICT, Resize: 1>Accuracy: 0.031, Normalize: Normalization.IMAGE_NET, Squarify: Squarify.AROUND_FACE_STRICT, Resize: 2>Accuracy: 0.082, Normalize: Normalization.IMAGE_NET, Squarify: Squarify.AROUND_FACE, Resize: 160      Accuracy: 0.079, Normalize: Normalization.IMAGE_NET, Squarify: Squarify.AROUND_FACE, Resize: 224      Accuracy: 0.073, Normalize: Normalization.IMAGE_NET, Squarify: None, Resize: 160                      Accuracy: 0.072, Normalize: Normalization.IMAGE_NET, Squarify: None, Resize: 224
+Accuracy: 0.077, Normalize: Normalization.IMAGE_NET, Squarify: Squarify.CROP, Resize: 160             Accuracy: 0.073, Normalize: Normalization.IMAGE_NET, Squarify: Squarify.CROP, Resize: 224
+Accuracy: 0.023, Normalize: Normalization._0_1, Squarify: Squarify.AROUND_FACE_STRICT, Resize: 160    Accuracy: 0.023, Normalize: Normalization._0_1, Squarify: Squarify.AROUND_FACE_STRICT, Resize: 224
+Accuracy: 0.077, Normalize: Normalization._0_1, Squarify: Squarify.AROUND_FACE, Resize: 160 
