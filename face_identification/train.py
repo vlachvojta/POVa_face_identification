@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
 from datasets.data_loader import Partition
-from datasets.image_preprocessor import ImagePreProcessorMTCNN
+from datasets.image_preprocessor import ImagePreProcessor, ImagePreProcessorMTCNN, ImagePreProcessorResnet
 from face_detection.face_detection_engine import FaceDetectionEngine
 from face_identification.face_embedding_models import FacenetPytorchWrapper, NetUtils
 from face_identification.face_embedding_models import *  # TODO: try to eliminate this import
@@ -44,6 +44,9 @@ def parse_arguments():
     parser.add_argument("--config", type=str, default=None, help="Path to model config")
     parser.add_argument("--render", action="store_true", help="Render validation samples.")
     parser.add_argument("--detect-faces", action="store_true", help="Detect faces in images using MTCNN from facenet_pytorch.")
+    preprocessors = [cls.__name__ for cls in ImagePreProcessor.__subclasses__()]
+    parser.add_argument("--preprocessor", type=str, choices=preprocessors, default=preprocessors[0],
+                        help="Image preprocessor to use (detect face, resize, normalize).")
 
     # Trainer settings
     parser.add_argument("--max-iter", default=100_000, type=int)
@@ -73,10 +76,14 @@ def main():
     # logging.getLogger("cv2").setLevel(level=logging.ERROR)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
     logging.info(f"Running on: {device}")
 
-    logging.info("Loading datasets ...")    
-    preprocessor = ImagePreProcessorMTCNN(device=device) if args.detect_faces else None
+    logging.info("Loading datasets ...")
+    try: 
+        preprocessor = eval(args.preprocessor)(device=device)
+    except NameError:
+        raise ValueError(f"Preprocessor {args.preprocessor} does not exist in ImagePreProcessor subclasses, see datasets/image_preprocessor.py.")
 
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor)

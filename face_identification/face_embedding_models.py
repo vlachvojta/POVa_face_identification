@@ -33,6 +33,7 @@ class BasicResnet(torch.nn.Module, NetUtils):
     def __init__(self, embedding_size=512):
         super(self.__class__, self).__init__()
         self.config = self.create_config(locals())
+        self.embedding_size = embedding_size
 
         backbone = models.resnet50(weights=ResNet50_Weights.DEFAULT)
 
