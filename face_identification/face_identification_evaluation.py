@@ -279,6 +279,6 @@ def delete_first_of_each_class(images, classes):
     return images, classes
 
 if __name__ == '__main__':
-    test_evaluation_with_ORL/_dataset()
+    test_evaluation_with_ORL_dataset()
     # test_preprocessing_of_CelebA_images_val_set()
     # test_resnet_sanity_check()

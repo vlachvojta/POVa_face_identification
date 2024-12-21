@@ -80,7 +80,7 @@ def main():
     logging.info(f"Running on: {device}")
 
     logging.info("Loading datasets ...")
-    try: 
+    try:
         preprocessor = eval(args.preprocessor)(device=device)
     except NameError:
         raise ValueError(f"Preprocessor {args.preprocessor} does not exist in ImagePreProcessor subclasses, see datasets/image_preprocessor.py.")
@@ -88,16 +88,16 @@ def main():
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor)
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_subset=True)
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_subset=True, preload_images=True)
 
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
 
-    trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=4)
+    trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True) #, persistent_workers=True, num_workers=4)
 
     val_dataloaders = {
         # 'trn': torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2),
-        'val': torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2)
+        'val': torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False) #, persistent_workers=True, num_workers=2)
     }
 
     model, trained_steps = load_model(args.output_path)
@@ -217,6 +217,7 @@ def train(
                 )
 
             monitor.add_value("view_time", t2 - t1)
+            monitor.add_value("validation_time", time.time() - t2)
             log_string = monitor.get_last_string()
             print(f"\n{log_string}")
 

@@ -18,7 +18,7 @@ class Partition(Enum):
 class DataLoader:
     def __init__(self, data_path, partition=Partition.TRAIN, filter_class = 0, filter_attributes = [],
                  sequential_classes: bool = False, limit: int = None, balance_subset: bool = False,
-                 image_preprocessor: ImagePreProcessor = None):
+                 image_preprocessor: ImagePreProcessor = None, preload_images: bool = False):
         self.data_path = data_path
         self.image_preprocessor = image_preprocessor
 
@@ -50,11 +50,21 @@ class DataLoader:
             # create unbalanced subset by selecting first `limit` elements
             if limit and len(self.data) > limit:
                 self.data = self.data[:limit]
+        
+        self.preloaded_images = False
+        if preload_images:
+            for i in range(len(self.data)):
+                dato = self.__getitem__(i)
+                self.data[i].image = dato["image"]
+            self.preloaded_images = True
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, index):
+        if self.preloaded_images:
+            return self.data[index]
+
         # Open image and return the whole object
         self.data[index].image = Image.open(f"{self.data_path}/Img/img_align_celeba/{self.data[index].filename}")
 

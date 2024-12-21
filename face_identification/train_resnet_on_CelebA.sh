@@ -19,7 +19,7 @@ python train.py \
     --render \
     --preprocessor ImagePreProcessorResnet \
     --max-iter 1000 \
-    --view-step 5 \
-    --save-step 5 \
+    --view-step 20 \
+    --save-step 100 \
     --val-size 1000 \
     --batch-size 16
