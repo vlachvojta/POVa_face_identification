@@ -4,7 +4,7 @@ OUTPUT_PATH=$1
 
 # if no output path is provided, print usage and exit
 if [ -z "$OUTPUT_PATH" ]; then
-    echo "Usage: train_resnet_on_CelebA.sh <output_path>"
+    echo "Usage: train_facenet_on_CelebA.sh <output_path>"
     exit
 fi
 
