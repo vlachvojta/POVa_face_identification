@@ -31,11 +31,12 @@ class Squarify(Enum):
 class ImagePreProcessor:
     DEFAULT_RESIZE = 224
     def __init__(self, face_detection_engine=None, squarify: Squarify = None,
-                 normalize: Normalization = None, resize: int = None):
+                 normalize: Normalization = None, resize: int = None, padding_around_face: float = None):
         self.face_detection_engine = face_detection_engine
         self.squarify = squarify
         self.normalize = normalize
         self.resize = resize
+        self.padding_around_face = padding_around_face # padding around the face detected by face detection engine relative to the face size
 
     def __call__(self, image: np.ndarray, save_image: bool = False, image_src: str = None) -> np.ndarray:
         assert image.ndim == 3, f"Image should have 3 dimensions (H, W, C) or (C, H, W), got {image.ndim} dimensions with shape {image.shape}"
@@ -44,7 +45,7 @@ class ImagePreProcessor:
 
         orig_image = image.copy()
 
-        image = self.squarify_image(image, self.squarify, image_src)
+        image = self.squarify_image(image, image_src)
 
         if self.resize:
             image = cv2.resize(image, (self.resize, self.resize))
@@ -91,7 +92,7 @@ class ImagePreProcessor:
 
         return image
 
-    def squarify_image(self, image, squarify: Squarify, image_src: str):
+    def squarify_image(self, image, image_src: str):
         if self.squarify is None:
             return image
 
@@ -103,14 +104,17 @@ class ImagePreProcessor:
             results = self.face_detection_engine(image)
             if results and len(results) > 0:
                 result = results[0]
-                padding = 20
+                # padding = 20
                 face = result['box']
                 l, t, r, b = face
                 l, t, r, b = int(l), int(t), int(r), int(b)
-                l = max(0, l - padding)
-                t = max(0, t - padding)
-                r = min(image.shape[1], r + padding)
-                b = min(image.shape[0], b + padding)
+                # add padding relative to the face size
+                if self.padding_around_face:
+                    padding = int(self.padding_around_face * (r - l))
+                    l = max(0, l - padding)
+                    t = max(0, t - padding)
+                    r = min(image.shape[1], r + padding)
+                    b = min(image.shape[0], b + padding)
                 # crop face and pad to make it square
                 if b - t > r - l:
                     pad = (b - t - (r - l)) // 2
