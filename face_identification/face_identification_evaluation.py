@@ -170,24 +170,26 @@ def test_resnet_sanity_check():
 
     results=[]
 
-    resnet_preprocessor = ImagePreProcessorResnet()
-    test_preprocessing_config(face_detection_engine, embedding_engine, None, None, None, results, preprocessor=resnet_preprocessor)
+    # resnet_preprocessor = ImagePreProcessorResnet(squarify=Squarify.AROUND_FACE_SQUISH)
+    # test_preprocessing_config(face_detection_engine, embedding_engine, None, None, None, results, preprocessor=resnet_preprocessor)
+    # resnet_preprocessor = ImagePreProcessorResnet(squarify=Squarify.AROUND_FACE)
+    # test_preprocessing_config(face_detection_engine, embedding_engine, None, None, None, results, preprocessor=resnet_preprocessor)
     # test_preprocessing_config(
     #     face_detection_engine, embedding_engine, 
     #     Normalization.IMAGE_NET, Squarify.AROUND_FACE, 160, results)
 
     # test every option in data_loader.py
     # normalize_options = [Normalization.IMAGE_NET, Normalization._0_1, Normalization._1_1, Normalization.MEAN_STD, Normalization.MIN_MAX]
-    padding_options = [0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4]
+    padding_options = [None, 0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4]
     # normalize_options = [Normalization._1_1, Normalization.MEAN_STD, Normalization.MIN_MAX]
-    # squarify_options = [Squarify.AROUND_FACE, Squarify.AROUND_FACE_STRICT, None, Squarify.CROP]
+    squarify_options = [Squarify.AROUND_FACE, Squarify.AROUND_FACE_SQUISH] #, Squarify.AROUND_FACE_STRICT, None, Squarify.CROP]
     # resize_options = [160, 224]
 
     for padding in padding_options:
-        print(f'\nTesting: Padding: {padding}')
-        preprocessor = ImagePreProcessorResnet()
-        preprocessor.padding_around_face = padding
-        test_preprocessing_config(face_detection_engine, embedding_engine, None, None, None, results, preprocessor=preprocessor)
+        for squarify in squarify_options:
+            print(f'\nTesting: Padding: {padding}, Squarify: {squarify}')
+            preprocessor = ImagePreProcessorResnet(padding_around_face=padding, squarify=squarify)
+            test_preprocessing_config(face_detection_engine, embedding_engine, None, None, None, results, preprocessor=preprocessor)
 
     # for normalize in normalize_options:
     #     for squarify in squarify_options:
@@ -243,7 +245,13 @@ def test_preprocessing_config(face_detection_engine, embedding_engine, normalize
     print('')
     accuracy = evaluate_dataset(val_dataset, embedding_engine)
 
-    results.append((normalize, squarify, resize, accuracy, preprocessor.padding_around_face))
+    normalize = preprocessor.normalize.name if preprocessor.normalize else None
+    squarify = preprocessor.squarify.name if preprocessor.squarify else None
+    resize = preprocessor.resize if preprocessor.resize else None
+    padding = preprocessor.padding_around_face if preprocessor.padding_around_face else None
+
+    results.append((normalize, squarify, resize, accuracy, padding))
+    # results.append((normalize, squarify, resize, accuracy, preprocessor.padding_around_face))
     print(f'results so far:')
     for normalize, squarify, resize, accuracy, padding in results:
         print(f'Accuracy: {accuracy:.3f}, Normalize: {normalize}, Squarify: {squarify}, Resize: {resize}, Padding: {padding}')
@@ -286,6 +294,6 @@ def delete_first_of_each_class(images, classes):
     return images, classes
 
 if __name__ == '__main__':
-    # test_evaluation_with_ORL_dataset()
+    test_evaluation_with_ORL_dataset()
     # test_preprocessing_of_CelebA_images_val_set()
-    test_resnet_sanity_check()
+    # test_resnet_sanity_check()

@@ -25,6 +25,7 @@ class Normalization(Enum):
 class Squarify(Enum):
     CROP = "crop"
     AROUND_FACE = "around_face"
+    AROUND_FACE_SQUISH = "around_face_squish"
     AROUND_FACE_STRICT = "around_face_strict"  # uses MTCNN to detect face
 
 
@@ -48,7 +49,7 @@ class ImagePreProcessor:
         image = self.squarify_image(image, image_src)
 
         if self.resize:
-            image = cv2.resize(image, (self.resize, self.resize))
+            image = self.resize_image(image)
 
         if save_image:
             image_with_background = np.zeros_like(orig_image)
@@ -98,6 +99,25 @@ class ImagePreProcessor:
 
         if self.squarify == Squarify.CROP:
             return self.squarify_crop(image)
+        elif self.squarify == Squarify.AROUND_FACE_SQUISH:
+            # detect face box and crop only the face inside the box
+            assert self.face_detection_engine, "Face detection engine must be provided to squarify around face."
+            results = self.face_detection_engine(image)
+            if results and len(results) > 0:
+                result = results[0]
+                face = result['box']
+                l, t, r, b = face
+                l, t, r, b = int(l), int(t), int(r), int(b)
+                image_shape = image.shape
+                image = image[t:b, l:r]
+                # print(f'Image: {image_src}, squarified around face {l, t, r, b} (w: {r-l}, h: {b-t}), shape: {image.shape} orig shape: {image_shape}')
+                image = self.resize_image(image)
+                return image
+            else:
+                print(f"Skipping squarify around face on image {image_src} as no face was detected.")
+                # image = self.squarify_crop(image)
+                image = self.resize_image(image)
+                return image
         elif self.squarify == Squarify.AROUND_FACE:
             # detect face box and crop the image around the face
             assert self.face_detection_engine, "Face detection engine must be provided to squarify around face."
@@ -141,18 +161,12 @@ class ImagePreProcessor:
                     b = min(image.shape[0], b + pad)
                 image = image[t:b, l:r]
                 # print(f'Squarified around face: {face} -> {l, t, r, b} (w: {r-l}, h: {t-b}), shape: {image.shape} orig shape: {orig_image.shape}')
-                if self.resize:
-                    image = cv2.resize(image, (self.resize, self.resize))
-                else:
-                    image = cv2.resize(image, (self.DEFAULT_RESIZE, self.DEFAULT_RESIZE))
+                image = self.resize_image(image)
                 return image
             else:
                 print(f"Skipping squarify around face on image {image_src} as no face was detected.")
                 image = self.squarify_crop(image)
-                if self.resize:
-                    image = cv2.resize(image, (self.resize, self.resize))
-                else:
-                    image = cv2.resize(image, (self.DEFAULT_RESIZE, self.DEFAULT_RESIZE))
+                image = self.resize_image(image)
                 return image
         elif self.squarify == Squarify.AROUND_FACE_STRICT:
             assert self.face_detection_engine, "Face detection engine must be provided to squarify around face."
@@ -172,6 +186,13 @@ class ImagePreProcessor:
             image = image[:, (w - h) // 2:(w + h) // 2]
         return image
 
+    def resize_image(self, image):
+        if self.resize:
+            image = cv2.resize(image, (self.resize, self.resize))
+        else:
+            image = cv2.resize(image, (self.DEFAULT_RESIZE, self.DEFAULT_RESIZE))
+        return image
+
 
 class ImagePreProcessorMTCNN(ImagePreProcessor):
     def __init__(self, device: str = 'cpu'):
@@ -186,4 +207,4 @@ class ImagePreProcessorResnet(ImagePreProcessor):
     def __init__(self, device: str = 'cpu'):
         self.face_detection_engine = FaceDetectionEngine(device=device, keep_all=False)
         super().__init__(face_detection_engine=self.face_detection_engine, 
-                         squarify=Squarify.AROUND_FACE, normalize=Normalization.IMAGE_NET, resize=160)
+                         squarify=Squarify.AROUND_FACE, normalize=Normalization.IMAGE_NET, resize=160, padding_around_face=None)
