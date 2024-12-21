@@ -8,6 +8,7 @@ import re
 import math
 import numpy as np
 from PIL import Image, ImageDraw
+import gc
 
 import torch
 import torch.nn.functional as F
@@ -227,6 +228,9 @@ def train(
 
         if iteration % save_step == 0:
             save_model(model, output_path, iteration)
+            torch.cuda.empty_cache() # clear cuda cache
+            gc.collect()  # clear RAM cache
+
 
 def validate(
     model: torch.nn.Module,
