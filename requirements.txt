@@ -7,3 +7,6 @@ scikit-learn
 pytorch_metric_learning
 customtkinter
 clearml
+opencv-python
+matplotlib
+prettytable
