@@ -50,7 +50,7 @@ class DataLoader:
             # create unbalanced subset by selecting first `limit` elements
             if limit and len(self.data) > limit:
                 self.data = self.data[:limit]
-        
+
         self.preloaded_images = False
         if preload_images:
             for i in range(len(self.data)):
@@ -62,7 +62,7 @@ class DataLoader:
         return len(self.data)
 
     def __getitem__(self, index):
-        if self.preloaded_images:
+        if self.preloaded_images and self.data[index].image is not None:
             return self.data[index]
 
         # Open image and return the whole object
@@ -74,7 +74,12 @@ class DataLoader:
             image = self.image_preprocessor(image, save_image=save_image, image_src=self.data[index].filename)
             self.data[index].image = image
 
-        return self.data[index]
+        try:
+            return self.data[index]
+        finally:
+            if not self.preloaded_images:
+                # delete link to the image in the object to prevent RAM overflow
+                self.data[index].image = None
 
     def unique_classes(self):
         return set(item.id for item in self.data)

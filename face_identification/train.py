@@ -14,6 +14,7 @@ import torch
 import torch.nn.functional as F
 from pytorch_metric_learning import losses, miners
 from pytorch_metric_learning.distances import CosineSimilarity
+import torch.multiprocessing as mp
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,6 +29,8 @@ from face_identification.training_monitor import TrainingMonitor
 from common import utils
 
 logging.basicConfig(level=logging.DEBUG)
+
+mp.set_start_method('spawn', force=True)
 
 
 def parse_arguments():
@@ -94,11 +97,11 @@ def main():
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
 
-    trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True) #, persistent_workers=True, num_workers=4)
+    trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=2)
 
     val_dataloaders = {
         # 'trn': torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2),
-        'val': torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False) #, persistent_workers=True, num_workers=2)
+        'val': torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2)
     }
 
     model, trained_steps = load_model(args.output_path)
@@ -225,11 +228,12 @@ def train(
             monitor.report_results()
             monitor.save_csv()
             t1 = time.time()
+            # get memory summary
+            torch.cuda.empty_cache() # clear cuda cache
+            gc.collect()  # clear RAM cache
 
         if iteration % save_step == 0:
             save_model(model, output_path, iteration)
-            torch.cuda.empty_cache() # clear cuda cache
-            gc.collect()  # clear RAM cache
 
 
 def validate(
@@ -319,7 +323,12 @@ def calculate_accuracy_with_threshold(
     # calculate precision, recall, f1 score
     precision = correct_positive_all / (correct_positive_all + correct_negative_all)
     recall = correct_positive_all / total_positive_all
-    f1_score = 2 * (precision * recall) / (precision + recall)
+    divisor = precision + recall
+    if divisor == 0:
+        f1_score = 0
+        logging.warning(f"divisor (precision + recall) is 0, precision: {precision}, recall: {recall}. Stored f1_score as 0 also.")
+    else:
+        f1_score = 2 * (precision * recall) / (precision + recall)
 
     monitor.add_value(f"val{threshold:.2f}_precision", precision)
     monitor.add_value(f"val{threshold:.2f}_recall", recall)
