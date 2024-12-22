@@ -6,7 +6,7 @@ from PIL import Image
 import cv2
 import numpy as np
 
-from datasets.data_structure import ImageData
+from datasets.data_structure import ImageData, Attribute
 from datasets.data_parser import DataParser
 from datasets.image_preprocessor import ImagePreProcessor
 
@@ -16,7 +16,7 @@ class Partition(Enum):
     TEST = 2
 
 class DataLoader:
-    def __init__(self, data_path, partition=Partition.TRAIN, filter_class = 0, filter_attributes = [],
+    def __init__(self, data_path, partition=Partition.TRAIN, filter_class = 0, filter_attributes: list = None,
                  sequential_classes: bool = False, limit: int = None, 
                  balance_classes: bool = False, balance_attributes: bool = False,
                  image_preprocessor: ImagePreProcessor = None, preload_images: bool = False):
@@ -39,6 +39,7 @@ class DataLoader:
             self.data = [image for image in self.data if image.id == filter_class]
 
         if filter_attributes:
+            filter_attributes = [Attribute[attr] for attr in filter_attributes if not isinstance(attr, Attribute)]
             if balance_attributes:
                 # Filter by attributes - balance number of images with and without the attributes (for the same person)
                 with_attr = [image for image in self.data if set([attr.name for attr in filter_attributes]) <= set(image.attributes())]
@@ -88,12 +89,7 @@ class DataLoader:
             image = self.image_preprocessor(image, save_image=save_image, image_src=self.data[index].filename)
             self.data[index].image = image
 
-        # try:
         return self.data[index]
-        # finally:
-        #     if not self.preloaded_images:
-        #         # delete link to the image in the object to prevent RAM overflow
-        #         self.data[index].image = None
 
     def unique_classes(self):
         return set(item.id for item in self.data)
@@ -144,7 +140,7 @@ class DataLoaderTorchWrapper(DataLoader):
 
         if image.shape[2] == 3:  # Engines need images in RGB format [3, H, W]
             image = image.transpose(2, 0, 1)
-        
+
         if not self.preloaded_images:
             # delete link to the image in the object to prevent RAM overflow
             item.image = None

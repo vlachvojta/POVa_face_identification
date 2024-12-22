@@ -31,12 +31,13 @@ class TrainingMonitor:
 
     def add_value(
         self,
-        key: str,
+        title: str,
+        series: str,
         value: float,
     ) -> None:
+        key = f"{title}_{series}"
         self.values[key].append(value)
         if self.task is not None:
-            series, title = key.split("_", 1)
             self.task.logger.report_scalar(title=title, series=series, value=value, iteration=self.iterations[-1])
 
     def report_results(self, digits: int=4) -> None:

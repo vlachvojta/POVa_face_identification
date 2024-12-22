@@ -61,6 +61,9 @@ def parse_arguments():
     parser.add_argument("--save-step", default=100, type=int, help="Number of training iterations between model saving.")
     parser.add_argument("--val-size", default=None, type=int, help="Number of samples to use for validation, leave None to use all samples.")
 
+    # Fine-tuning settings
+    parser.add_argument("--attribute", default=None, type=str, help="Attribute to filter by.")
+
     # Optimization settings
     parser.add_argument("--batch-size", "-b", default=16, type=int)
     parser.add_argument("--lr", default=2e-4, type=float)
@@ -86,26 +89,37 @@ def main():
     # device = torch.device("cpu")
     logging.info(f"Running on: {device}")
 
-    logging.info("Loading datasets ...")
     try:
         preprocessor = eval(args.preprocessor)(device=device)
     except NameError:
         raise ValueError(f"Preprocessor {args.preprocessor} does not exist in ImagePreProcessor subclasses, see datasets/image_preprocessor.py.")
 
+    logging.info(f'Loading trn dataset (this might take a while) ...')
     trn_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor)
+        args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor,
+        filter_attributes=[args.attribute], balance_attributes=True)
+    logging.info("Loading val dataset(s) ...")
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_classes=True, preload_images=True)
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor,
+        limit=args.val_size, preload_images=True, balance_classes=True)
+    if args.attribute:
+        val_dataset_attr = CelebADataLoader(
+            args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor,
+            limit=args.val_size, preload_images=True, filter_attributes=[args.attribute], balance_attributes=True)
 
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
+    if args.attribute:
+        logging.info(f"Validation dataset with attribute {args.attribute}: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
 
     trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=2)
 
     val_dataloaders = {
         # 'trn': torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2),
-        'val': torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2)
+        'orig': torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2)
     }
+    if args.attribute:
+        val_dataloaders[args.attribute] = torch.utils.data.DataLoader(val_dataset_attr, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2)
 
     model, trained_steps = load_model(args.output_path)
     model = model.to(device)
@@ -217,7 +231,7 @@ def train(
             t2 = time.time()
 
             monitor.iterations.append(iteration)
-            monitor.add_value(f"train_loss", sum(train_losses) / len(train_losses))
+            monitor.add_value("loss", "train", sum(train_losses) / len(train_losses))
 
             train_losses = []
 
@@ -234,8 +248,8 @@ def train(
                     training_iter = iteration,
                 )
 
-            monitor.add_value("view_time", t2 - t1)
-            monitor.add_value("validation_time", time.time() - t2)
+            monitor.add_value("time", "view", t2 - t1)
+            monitor.add_value("time", "validation", time.time() - t2)
             log_string = monitor.get_last_string()
             print(f"\n{log_string}")
 
@@ -261,7 +275,7 @@ def validate(
     monitor: TrainingMonitor,
     render: bool=False,
 ):
-    logging.info("Validating ...")
+    logging.info(f"Validating {data_loader_name} ...")
     total_loss = 0.0
     total_correct = 0
     total_samples = 0
@@ -303,7 +317,7 @@ def validate(
 
     # calculate average loss
     avg_loss = total_loss / total_samples
-    monitor.add_value("val_loss", avg_loss)
+    monitor.add_value("loss", f"val_{data_loader_name}", avg_loss)
     logging.info(f"Validation Loss: {avg_loss:.4f}")
 
     # calculate similarity matrix + bool matrix for same or different classes
@@ -372,7 +386,7 @@ def validate(
     same_or_diff_upper_triangle = same_or_diff_upper_triangle[np.triu_indices(same_or_diff_upper_triangle.shape[0], k=1)]
     # similarities_upper_triangle and same_or_diff_upper_triangle should be 1D arrays of the same length with the upper triangle of the original matrix
     auc = roc_auc_score(same_or_diff_upper_triangle, similarities_upper_triangle)
-    monitor.add_value("val_auc", auc)
+    monitor.add_value("auc", f"val_{data_loader_name}", auc)
 
     # remove main diagonal using mask to avoid self pairing
     mask = torch.eye(similarities_all.size(0), device=device, dtype=torch.bool)
@@ -385,6 +399,7 @@ def validate(
             threshold=threshold,
             similarities_all=similarities_all,
             same_or_diff_all=same_or_diff_all,
+            data_loader_name=data_loader_name,
             monitor=monitor
         )
 
@@ -407,6 +422,7 @@ def calculate_accuracy_with_threshold(
     threshold: float,
     similarities_all: torch.Tensor,
     same_or_diff_all: torch.Tensor,
+    data_loader_name: str,
     monitor: TrainingMonitor
 ):
     correct_all = ((similarities_all >= threshold) == same_or_diff_all).sum().item()
@@ -425,12 +441,12 @@ def calculate_accuracy_with_threshold(
     else:
         f1_score = 2 * (precision * recall) / (precision + recall)
 
-    monitor.add_value(f"val{threshold:.2f}_precision", precision)
-    monitor.add_value(f"val{threshold:.2f}_recall", recall)
-    monitor.add_value(f"val{threshold:.2f}_f1_score", f1_score)
+    monitor.add_value(f'precision_{data_loader_name}', f"val{threshold:.2f}", precision)
+    monitor.add_value(f'recall_{data_loader_name}', f"val{threshold:.2f}", recall)
+    monitor.add_value(f'f1_score_{data_loader_name}', f"val{threshold:.2f}", f1_score)
 
     val_accuracy = correct_all / total_all
-    monitor.add_value(f"val{threshold:.2f}_accuracy", val_accuracy)
+    monitor.add_value(f'accuracy_{data_loader_name}', f"val{threshold:.2f}", val_accuracy)
 
 
 def load_model(path: str, device = 'cpu') -> tuple[NetUtils, int]:
