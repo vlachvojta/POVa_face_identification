@@ -18,6 +18,7 @@ from pytorch_metric_learning import losses, miners
 from pytorch_metric_learning.distances import CosineSimilarity
 import torch.multiprocessing as mp
 import torchvision.utils as vutils
+from sklearn.metrics import roc_auc_score
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -274,8 +275,7 @@ def validate(
 
             total_samples += len(images)
 
-            # normalize embeddings + store them and classes for accuracy calculation
-            # embeddings = torch.nn.functional.normalize(embeddings, dim=1)
+            # store embeddings and classes for accuracy calculation
             start = i*len(embeddings)
             end = start + len(embeddings)
             embeddings_all[start:end] = embeddings
@@ -283,14 +283,13 @@ def validate(
             images_all[start:end] = images
     
     embeddings_all = torch.nn.functional.normalize(embeddings_all, dim=1)
-    
+
     worst_batches = sorted(batch_losses, key=lambda x: x[1], reverse=True)[:3]
     
     if render:
         for batch_index, loss, images in worst_batches:
             image_name = f"{training_iter}_{batch_index}_loss_{loss:.4f}.png"
             render_batch_images(images=images, path=f"{output_path}/val", filename=image_name)
-
 
     # calculate average loss
     avg_loss = total_loss / total_samples
@@ -322,7 +321,7 @@ def validate(
             image1 = images_all[img_idx_1]
             image2 = images_all[img_idx_2]
             all_pairs.append((image1, image2))
-
+        
         if len(all_pairs) > 0:
             render_pairs(
                 pairs=all_pairs,
@@ -333,7 +332,39 @@ def validate(
                 filename=f"{training_iter}_least_similar.png"
             )
 
-    # setting diagonal to False to avoid self pairing
+        # make a copy and detach from the graph without changing the original tensor
+        similarities_all_copy = similarities_all.clone().detach()
+        # to all similarities of different classes add 100 to not consider them in the least similar pairs
+        same_class_similarities = similarities_all_copy + 100 * ~same_or_diff_all
+
+        # get indices of same class pairs with the smallest similarity
+        least_similar_pairs = get_k_smallest_sorted_indices(same_class_similarities.cpu().numpy(), k=20)
+        least_similar_pairs = [(i, j) for i, j in least_similar_pairs if i < j]  # remove duplicates
+
+        image_pairs = [(images_all[i], images_all[j]) for i, j in least_similar_pairs]
+        similarities = [same_class_similarities[i, j].item() for i, j in least_similar_pairs]
+        classes = [(classes_all[i].item(), classes_all[j].item()) for i, j in least_similar_pairs]
+
+        if len(least_similar_pairs) > 0:
+            render_pairs(
+                pairs=image_pairs,
+                similarities=similarities,
+                classes=classes,
+                indices=least_similar_pairs,
+                path=f"{output_path}/val/false_negatives_k_smallest",
+                filename=f"{training_iter}_least_similar.png"
+            )
+
+    # compute AUC using roc_auc_score function, use similarities_all and same_or_diff_all
+    similarities_upper_triangle = similarities_all.cpu().numpy()
+    similarities_upper_triangle = similarities_upper_triangle[np.triu_indices(similarities_upper_triangle.shape[0], k=1)]
+    same_or_diff_upper_triangle = same_or_diff_all.cpu().numpy()
+    same_or_diff_upper_triangle = same_or_diff_upper_triangle[np.triu_indices(same_or_diff_upper_triangle.shape[0], k=1)]
+    # similarities_upper_triangle and same_or_diff_upper_triangle should be 1D arrays of the same length with the upper triangle of the original matrix
+    auc = roc_auc_score(same_or_diff_upper_triangle, similarities_upper_triangle)
+    monitor.add_value("val_auc", auc)
+
+    # remove main diagonal using mask to avoid self pairing
     mask = torch.eye(similarities_all.size(0), device=device, dtype=torch.bool)
     similarities_all = similarities_all.masked_select(~mask).view(similarities_all.size(0), -1)
     same_or_diff_all = same_or_diff_all.masked_select(~mask).view(same_or_diff_all.size(0), -1)
@@ -346,6 +377,20 @@ def validate(
             same_or_diff_all=same_or_diff_all,
             monitor=monitor
         )
+
+def get_k_smallest_sorted_indices(arr: np.ndarray, k: int=10):
+    flat_arr = arr.flatten()
+    k = min(k, len(flat_arr))
+
+    # Get indices of 10 smallest values
+    idx = np.argpartition(flat_arr, 10)[:10]
+    values = flat_arr[idx]
+    sorted_idx = idx[np.argsort(values)]
+
+    # Convert flat indices to row-column pairs
+    rows, cols = np.unravel_index(sorted_idx, arr.shape)
+
+    return list(zip(rows, cols))
 
 
 def calculate_accuracy_with_threshold(
