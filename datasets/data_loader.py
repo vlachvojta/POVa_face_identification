@@ -17,7 +17,7 @@ class Partition(Enum):
 
 class DataLoader:
     def __init__(self, data_path, partition=Partition.TRAIN, filter_class = 0, filter_attributes = [],
-                 sequential_classes: bool = False, limit: int = None, balance_subset: bool = False,
+                 sequential_classes: bool = False, limit: int = None, balance_classes: bool = False,
                  image_preprocessor: ImagePreProcessor = None, balance_attributes: bool = False):
         self.data_path = data_path
         self.image_preprocessor = image_preprocessor
@@ -56,8 +56,9 @@ class DataLoader:
         if sequential_classes:
             self.reorder_classes()
 
-        if balance_subset:
-            self.data = self.balance_subset(limit)
+        if balance_classes:
+            assert balance_attributes is False, "Balancing classes and attributes does not make sense. Please choose one."
+            self.data = self.balance_classes(limit)
         else:
             # create unbalanced subset by selecting first `limit` elements
             if limit and len(self.data) > limit:
@@ -88,7 +89,7 @@ class DataLoader:
         for item in self.data:
             item.id = class_mapping[item.id]
 
-    def balance_subset(self, limit: int = None) -> list:
+    def balance_classes(self, limit: int = None) -> list:
         """Assure classes have more than one sample in the dataset by creating a subset of the data.
         1) Use the first quarter of the data with whatever is available.
         2) Add the rest of the data, but only if the class is not already present in the subset.

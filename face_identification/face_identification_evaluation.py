@@ -196,7 +196,7 @@ def test_preprocessing_config(face_detection_engine, embedding_engine, normalize
                                         squarify=squarify, normalize=normalize, resize=resize)
 
     val_dataset = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
-                                   sequential_classes=True, balance_subset=True, limit=1000,
+                                   sequential_classes=True, balance_classes=True, limit=1000,
                                    image_preprocessor=preprocessor)
     print('')
     accuracy = evaluate_dataset(val_dataset, embedding_engine)

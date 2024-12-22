@@ -83,7 +83,7 @@ def main():
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor)
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_subset=True)
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_classes=True)
 
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
