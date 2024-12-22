@@ -20,8 +20,13 @@ class FaceDetectionEngine:
 
 		if boxes is not None:
 			for box, prob, landmark in zip(boxes, probs, landmarks):
+				l, t, r, b = box.tolist()
+				l = max(0, l)
+				t = max(0, t)
+				r = min(image.shape[1], r)
+				b = min(image.shape[0], b)
 				results.append({
-					"box": box.tolist(),  # return box as left, top, right, bottom (not x, y, width, height)
+					"box": [l, t, r, b],
 					"prob": prob,
 					"landmarks": landmark.tolist()
 				})

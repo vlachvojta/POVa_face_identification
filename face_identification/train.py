@@ -7,6 +7,8 @@ import json
 import re
 import math
 import numpy as np
+from PIL import Image, ImageDraw
+import gc
 from PIL import Image, ImageDraw, ImageFont
 from torchvision import transforms
 
@@ -14,6 +16,7 @@ import torch
 import torch.nn.functional as F
 from pytorch_metric_learning import losses, miners
 from pytorch_metric_learning.distances import CosineSimilarity
+import torch.multiprocessing as mp
 import torchvision.utils as vutils
 
 # add parent of this file to path to enable importing
@@ -21,7 +24,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
 from datasets.data_loader import Partition
-from datasets.image_preprocessor import ImagePreProcessorMTCNN
+from datasets.image_preprocessor import ImagePreProcessor, ImagePreProcessorMTCNN, ImagePreProcessorResnet
 from face_detection.face_detection_engine import FaceDetectionEngine
 from face_identification.face_embedding_models import FacenetPytorchWrapper, NetUtils
 from face_identification.face_embedding_models import *  # TODO: try to eliminate this import
@@ -29,6 +32,8 @@ from face_identification.training_monitor import TrainingMonitor
 from common import utils
 
 logging.basicConfig(level=logging.DEBUG)
+
+mp.set_start_method('spawn', force=True)
 
 
 def parse_arguments():
@@ -46,6 +51,9 @@ def parse_arguments():
     parser.add_argument("--config", type=str, default=None, help="Path to model config")
     parser.add_argument("--render", action="store_true", help="Render validation samples.")
     parser.add_argument("--detect-faces", action="store_true", help="Detect faces in images using MTCNN from facenet_pytorch.")
+    preprocessors = [cls.__name__ for cls in ImagePreProcessor.__subclasses__()]
+    parser.add_argument("--preprocessor", type=str, choices=preprocessors, default=preprocessors[0],
+                        help="Image preprocessor to use (detect face, resize, normalize).")
 
     # Trainer settings
     parser.add_argument("--max-iter", default=100_000, type=int)
@@ -75,20 +83,24 @@ def main():
     # logging.getLogger("cv2").setLevel(level=logging.ERROR)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
     logging.info(f"Running on: {device}")
 
-    logging.info("Loading datasets ...")    
-    preprocessor = ImagePreProcessorMTCNN(device=device) if args.detect_faces else None
+    logging.info("Loading datasets ...")
+    try:
+        preprocessor = eval(args.preprocessor)(device=device)
+    except NameError:
+        raise ValueError(f"Preprocessor {args.preprocessor} does not exist in ImagePreProcessor subclasses, see datasets/image_preprocessor.py.")
 
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor)
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_classes=True)
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_classes=True, preload_images=True)
 
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
 
-    trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=4)
+    trn_dataloader = torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=True, persistent_workers=True, num_workers=2)
 
     val_dataloaders = {
         # 'trn': torch.utils.data.DataLoader(trn_dataset, batch_size=args.batch_size, shuffle=False, persistent_workers=True, num_workers=2),
@@ -212,15 +224,20 @@ def train(
                 )
 
             monitor.add_value("view_time", t2 - t1)
+            monitor.add_value("validation_time", time.time() - t2)
             log_string = monitor.get_last_string()
             print(f"\n{log_string}")
 
             monitor.report_results()
             monitor.save_csv()
             t1 = time.time()
+            # get memory summary
+            torch.cuda.empty_cache() # clear cuda cache
+            gc.collect()  # clear RAM cache
 
         if iteration % save_step == 0:
             save_model(model, output_path, iteration)
+
 
 def validate(
     model: torch.nn.Module,
@@ -345,7 +362,12 @@ def calculate_accuracy_with_threshold(
     # calculate precision, recall, f1 score
     precision = correct_positive_all / (correct_positive_all + correct_negative_all)
     recall = correct_positive_all / total_positive_all
-    f1_score = 2 * (precision * recall) / (precision + recall)
+    divisor = precision + recall
+    if divisor == 0:
+        f1_score = 0
+        logging.warning(f"divisor (precision + recall) is 0, precision: {precision}, recall: {recall}. Stored f1_score as 0 also.")
+    else:
+        f1_score = 2 * (precision * recall) / (precision + recall)
 
     monitor.add_value(f"val{threshold:.2f}_precision", precision)
     monitor.add_value(f"val{threshold:.2f}_recall", recall)

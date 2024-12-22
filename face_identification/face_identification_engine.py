@@ -10,7 +10,7 @@ from enum import Enum
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.ORL_dataset import ORLDataset
-from face_identification.face_embedding_engine import FaceEmbeddingEngine, ResnetEmbeddingEngine
+from face_identification.face_embedding_engine import FaceEmbeddingEngine, FacenetEmbeddingEngine
 
 
 class DistanceFunction(Enum):
@@ -176,7 +176,7 @@ def create_class_embedding(embedding_engine: FaceEmbeddingEngine, images: list[n
 
 def test_engine_with_ORL_dataset():
     dataset = ORLDataset()
-    embedding_engine = ResnetEmbeddingEngine(device='cpu')
+    embedding_engine = FacenetEmbeddingEngine(device='cpu')
 
     # initialize face identification engine
     force_new_class_embeddings = False

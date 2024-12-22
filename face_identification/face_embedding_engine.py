@@ -11,6 +11,7 @@ from facenet_pytorch import InceptionResnetV1
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.ORL_dataset import ORLDataset
+from face_identification.face_embedding_models import BasicResnet, FacenetPytorchWrapper
 
 
 class FaceEmbeddingEngine:
@@ -40,7 +41,7 @@ class FaceEmbeddingEngine:
         return np.array(Image.open(image_path))
 
 
-class ResnetEmbeddingEngine(FaceEmbeddingEngine):
+class FacenetEmbeddingEngine(FaceEmbeddingEngine):
     INPUT_PIXELS = 160
     DIM = 512
 
@@ -71,10 +72,40 @@ class ResnetEmbeddingEngine(FaceEmbeddingEngine):
             return embedding[0]
         return embedding
 
+class BasicResnetEmbeddingEngine(FaceEmbeddingEngine):
+    INPUT_PIXELS = 160
+    DIM = 512
+
+    def __init__(self, model_name: str = 'resnet50', device: str = 'cuda', **kwargs):
+        super().__init__(**kwargs)
+        self.model = BasicResnet(embedding_size=self.DIM).eval().to(device)
+        self.device = device
+
+    def extract_face_embeddings(self, image: np.ndarray):
+        image = torch.tensor(image).float().to(self.device)
+
+        if len(image.shape) == 3:
+            assert image.shape[0] == 3, f"Image should have 3 channels in a shape (channels, height, width), got {image.shape[0]} channels in shape {image.shape}"
+            image = image.unsqueeze(0)
+            return_first = True
+        elif len(image.shape) == 4:
+            assert image.shape[1] == 3, f"Image should have 3 channels in a shape (batch, channels, height, width), got {image.shape[1]} channels in shape {image.shape}"
+            return_first = False
+        else:
+            assert False, f"Image shape should have three dimensions (channels, height, width) or four (batch, channels, height, width), got {image.shape}"
+
+        # resize image to input_pixels
+        image = F.interpolate(image, size=(self.INPUT_PIXELS, self.INPUT_PIXELS), mode='bilinear', align_corners=False)
+        embedding = self.model(image).detach().cpu().numpy()
+
+        if return_first:
+            return embedding[0]
+        return embedding
+
 
 def example_usage_one_image():
     import matplotlib.pyplot as plt
-    engine = ResnetEmbeddingEngine()
+    engine = FacenetEmbeddingEngine()
     dataset = ORLDataset()
 
     # test the engine with one image
@@ -90,7 +121,7 @@ def example_usage_one_image():
 
 def example_usage_batch_images():
     import matplotlib.pyplot as plt
-    engine = ResnetEmbeddingEngine()
+    engine = FacenetEmbeddingEngine()
     dataset = ORLDataset()
 
     # test the engine with multiple images (batch)

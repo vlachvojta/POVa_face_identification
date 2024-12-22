@@ -1,6 +1,7 @@
 import torch
 from facenet_pytorch import InceptionResnetV1
 from torchvision import models
+from torchvision.models import ResNet50_Weights
 
 class NetUtils:
     def create_config(self, locals):
@@ -32,8 +33,9 @@ class BasicResnet(torch.nn.Module, NetUtils):
     def __init__(self, embedding_size=512):
         super(self.__class__, self).__init__()
         self.config = self.create_config(locals())
+        self.embedding_size = embedding_size
 
-        backbone = models.resnet50(pretrained=True)
+        backbone = models.resnet50(weights=ResNet50_Weights.DEFAULT)
 
         # Remove final classification layer
         backbone_modules = list(backbone.children())[:-1]
