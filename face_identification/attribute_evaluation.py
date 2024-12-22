@@ -1,13 +1,14 @@
 import os
 import sys
+
 import torch
 import torch.nn.functional as F
-
+import numpy as np
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
+from datasets.data_loader import DataLoader as CelebADataLoader
 from datasets.data_loader import Partition
 from datasets.data_structure import Attribute
 from datasets.image_preprocessor import ImagePreProcessorMTCNN
@@ -40,7 +41,7 @@ def evaluate_attribute_accuracy():
     embedding_engine = ResnetEmbeddingEngine(device=device, verbose=False)
     
     preprocessor = ImagePreProcessorMTCNN()
-    val_dataset = CelebADataLoader(data_path='./datasets/CelebA/', partition=Partition.VAL,
+    val_dataset = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
                                    sequential_classes=True, balance_subset=True, limit=1000,
                                    image_preprocessor=preprocessor)
 
@@ -53,14 +54,14 @@ def evaluate_attribute_accuracy():
             
     # Load all images, create embeddings
     for i in range(len(val_dataset)):
-        image = val_dataset[i]
-        embedding = embedding_engine(image['image'])
+        item = val_dataset[i]
+        embedding = embedding_engine(np.array(item.image))
 
         for attr in Attribute:
-            if attr.name in image['attributes']:
-                data[attr.name][image['class']][0].append(embedding)
+            if attr.name in item.attributes():
+                data[attr.name][item.id][0].append(embedding)
             else:
-                data[attr.name][image['class']][1].append(embedding)
+                data[attr.name][item.id][1].append(embedding)
     
     accuracy_0 = get_accuracy(data, 0)
     accuracy_0_4 = get_accuracy(data, 0.4)

@@ -119,5 +119,4 @@ class DataLoaderTorchWrapper(DataLoader):
         return {
             "image": image,
             "class": item.id,
-            "attributes": item.attributes()
         }
