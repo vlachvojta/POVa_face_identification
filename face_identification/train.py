@@ -51,7 +51,6 @@ def parse_arguments():
     parser.add_argument("-o", "--output-path", required=True, type=str, help="Path to the output folder.")
     parser.add_argument("--config", type=str, default=None, help="Path to model config")
     parser.add_argument("--render", action="store_true", help="Render validation samples.")
-    parser.add_argument("--detect-faces", action="store_true", help="Detect faces in images using MTCNN from facenet_pytorch.")
     preprocessors = [cls.__name__ for cls in ImagePreProcessor.__subclasses__()]
     parser.add_argument("--preprocessor", type=str, choices=preprocessors, default=preprocessors[0],
                         help="Image preprocessor to use (detect face, resize, normalize).")

@@ -17,9 +17,9 @@ python train.py \
     --output-path $OUTPUT_PATH \
     --config $output_path/config.json \
     --render \
-    --detect-faces \
+    --preprocessor ImagePreProcessorMTCNN \
     --max-iter 1000 \
-    --view-step 5 \
-    --save-step 5 \
+    --view-step 20 \
+    --save-step 100 \
     --val-size 1000 \
     --batch-size 16
