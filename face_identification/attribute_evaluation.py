@@ -12,7 +12,7 @@ from datasets.data_loader import DataLoader as CelebADataLoader
 from datasets.data_loader import Partition
 from datasets.data_structure import Attribute
 from datasets.image_preprocessor import ImagePreProcessorMTCNN
-from face_identification.face_embedding_engine import ResnetEmbeddingEngine
+from face_identification.face_embedding_engine import FacenetEmbeddingEngine
 from prettytable import PrettyTable
 
 
@@ -38,7 +38,7 @@ def get_accuracy(data, distance_threshold):
 
 def evaluate_attribute_accuracy():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    embedding_engine = ResnetEmbeddingEngine(device=device, verbose=False)
+    embedding_engine = FacenetEmbeddingEngine(device=device, verbose=False)
     
     preprocessor = ImagePreProcessorMTCNN()
     val_dataset = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
