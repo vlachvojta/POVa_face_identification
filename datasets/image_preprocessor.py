@@ -171,6 +171,11 @@ class ImagePreProcessor:
         elif self.squarify == Squarify.AROUND_FACE_STRICT:
             assert self.face_detection_engine, "Face detection engine must be provided to squarify around face."
             face = np.array(self.face_detection_engine.strict_detection(image, image_src))
+            if face is None:
+                print(f"Skipping squarify around face on image {image_src} as no face was detected.")
+                image = self.guess_face_location(image)
+                image = self.squarify_crop(image)
+                image = cv2.resize(image, (160, 160))
             # uses MTCNN to detect face
             # the face is squished face (detected rectangle bounding box is resized to 160x160)
             return face.transpose(1, 2, 0) # [3, 160, 160] -> [160, 160, 3] (for other engines)
@@ -191,6 +196,18 @@ class ImagePreProcessor:
             image = cv2.resize(image, (self.resize, self.resize))
         else:
             image = cv2.resize(image, (self.DEFAULT_RESIZE, self.DEFAULT_RESIZE))
+        return image
+    
+    def guess_face_location(self, image):
+        # guess face location by cropping the center of the image
+        # crop one fifth on both horizontal sides
+        # crop on sixth on the top and bottom
+        h, w = image.shape[:2]
+        l = w // 5
+        r = w - w // 5
+        t = h // 6
+        b = h - h // 6
+        image = image[t:b, l:r]
         return image
 
 

@@ -39,8 +39,7 @@ class FaceDetectionEngine:
 
 		# check if face was detected
 		if face is None:
-			print(f"Skipping squarify around face on image {image_src} as no face was detected.")
-			face = cv.resize(image, (160, 160))
+			return None
 
 		# check face has shape [C, H, W]
 		if not face.ndim == 3:
