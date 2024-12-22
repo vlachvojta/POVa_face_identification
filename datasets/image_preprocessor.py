@@ -178,6 +178,7 @@ class ImagePreProcessor:
                 print(f"Skipping squarify around face on image {image_src} as no face was detected.")
                 image = self.guess_face_location(image)
                 image = cv2.resize(image, (160, 160))
+                image = image / 127.5 - 1.0  # fall back to normalizing to [-1, 1]
                 return image
             else:
                 face = np.array(face).transpose(1, 2, 0)  # [3, 160, 160] -> [160, 160, 3] (for other engines)
