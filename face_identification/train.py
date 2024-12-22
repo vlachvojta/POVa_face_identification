@@ -7,12 +7,14 @@ import json
 import re
 import math
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
+from torchvision import transforms
 
 import torch
 import torch.nn.functional as F
 from pytorch_metric_learning import losses, miners
 from pytorch_metric_learning.distances import CosineSimilarity
+import torchvision.utils as vutils
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -81,7 +83,7 @@ def main():
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor)
     val_dataset = CelebADataLoader(
-        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_subset=True)
+        args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor, limit=args.val_size, balance_classes=True)
 
     logging.info(f"Train dataset:      {len(trn_dataset)} samples with {len(trn_dataset.unique_classes())} unique classes")
     logging.info(f"Validation dataset: {len(val_dataset)} samples with {len(val_dataset.unique_classes())} unique classes")
@@ -241,6 +243,7 @@ def validate(
     with torch.no_grad():
         embeddings_all = torch.empty((len(data_loader.dataset), model.embedding_size), device=device)
         classes_all = torch.empty((len(data_loader.dataset)), device=device, dtype=torch.int64)
+        images_all = torch.empty((len(data_loader.dataset), *next(iter(data_loader))["image"].shape[1:]), device="cpu")
 
         for i, batch_data in enumerate(data_loader):
             images = batch_data["image"].to(device).float()
@@ -255,11 +258,14 @@ def validate(
             total_samples += len(images)
 
             # normalize embeddings + store them and classes for accuracy calculation
-            embeddings = torch.nn.functional.normalize(embeddings, dim=1)
+            # embeddings = torch.nn.functional.normalize(embeddings, dim=1)
             start = i*len(embeddings)
             end = start + len(embeddings)
             embeddings_all[start:end] = embeddings
             classes_all[start:end] = classes
+            images_all[start:end] = images
+    
+    embeddings_all = torch.nn.functional.normalize(embeddings_all, dim=1)
     
     worst_batches = sorted(batch_losses, key=lambda x: x[1], reverse=True)[:3]
     
@@ -291,6 +297,38 @@ def validate(
             same_or_diff_all=same_or_diff_all,
             monitor=monitor
         )
+        
+    if render:
+        least_similar_pairs = []
+        similarities = []
+        class_pairs = []
+        image_indices = []
+        all_pairs = []
+
+        for i in range(similarities_all.size(0)):
+            dissimilarities = similarities_all[i]
+            least_similar_index = torch.argmin(dissimilarities).item()
+
+            if classes_all[i] == classes_all[least_similar_index]:
+                least_similar_pairs.append((i, least_similar_index))
+                similarities.append(dissimilarities[least_similar_index].item())
+                class_pairs.append((classes_all[i].item(), classes_all[least_similar_index].item()))
+                image_indices.append((i, least_similar_index))
+
+        for img_idx_1, img_idx_2 in least_similar_pairs:
+            image1 = images_all[img_idx_1]
+            image2 = images_all[img_idx_2]
+            all_pairs.append((image1, image2))
+
+        if len(all_pairs) > 0:
+            render_pairs(
+                pairs=all_pairs,
+                similarities=similarities,
+                classes=class_pairs,
+                indices=image_indices,
+                path=f"{output_path}/val/false_negatives",
+                filename=f"{training_iter}_least_similar.png"
+            )
 
 def calculate_accuracy_with_threshold(
     threshold: float,
@@ -396,6 +434,46 @@ def render_batch_images(images: torch.Tensor, path: str, filename: str):
     
     output_file = os.path.join(path, filename)
     canvas.save(output_file)
+
+def render_pairs(pairs, similarities, classes, indices, path, filename):
+
+    os.makedirs(path, exist_ok=True)
+    
+    num_pairs = len(pairs)
+
+    image_height, image_width = pairs[0][0].shape[1], pairs[0][0].shape[2]
+    text_height = 30
+    total_height = num_pairs * (image_height + text_height)
+    total_width = image_width * 2
+
+    canvas = Image.new("RGB", (total_width, total_height), color=(0, 0, 0))
+    font = ImageFont.load_default()
+
+    for idx, ((image1, image2), similarity, (class1, class2), (index1, index2)) in enumerate(zip(pairs, similarities, classes, indices)):
+        image1 = image1.cpu().numpy().transpose(1, 2, 0)
+        image2 = image2.cpu().numpy().transpose(1, 2, 0)
+
+        image1 = (image1 - image1.min()) / (image1.max() - image1.min()) * 255
+        image2 = (image2 - image2.min()) / (image2.max() - image2.min()) * 255
+        image1 = image1.astype(np.uint8)
+        image2 = image2.astype(np.uint8)
+
+        image1_pil = Image.fromarray(image1)
+        image2_pil = Image.fromarray(image2)
+
+        concatenated_image = Image.new("RGB", (image_width * 2, image_height))
+        concatenated_image.paste(image1_pil, (0, 0))
+        concatenated_image.paste(image2_pil, (image_width, 0))
+
+        y_offset = idx * (image_height + text_height)
+        canvas.paste(concatenated_image, (0, y_offset))
+
+        draw = ImageDraw.Draw(canvas)
+        text = f"similarity: {similarity:.2f} | id1: {class1} | id2: {class2} | index1: {index1} | index2: {index2}"
+        text_position = (10, y_offset + image_height + 5)
+        draw.text(text_position, text, fill=(255, 255, 255), font=font)
+
+    canvas.save(f"{path}/{filename}")
 
 if __name__ == "__main__":
     main()
