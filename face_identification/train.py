@@ -275,8 +275,7 @@ def validate(
 
             total_samples += len(images)
 
-            # normalize embeddings + store them and classes for accuracy calculation
-            # embeddings = torch.nn.functional.normalize(embeddings, dim=1)
+            # store embeddings and classes for accuracy calculation
             start = i*len(embeddings)
             end = start + len(embeddings)
             embeddings_all[start:end] = embeddings
@@ -284,14 +283,13 @@ def validate(
             images_all[start:end] = images
     
     embeddings_all = torch.nn.functional.normalize(embeddings_all, dim=1)
-    
+
     worst_batches = sorted(batch_losses, key=lambda x: x[1], reverse=True)[:3]
     
     if render:
         for batch_index, loss, images in worst_batches:
             image_name = f"{training_iter}_{batch_index}_loss_{loss:.4f}.png"
             render_batch_images(images=images, path=f"{output_path}/val", filename=image_name)
-
 
     # calculate average loss
     avg_loss = total_loss / total_samples
@@ -318,8 +316,6 @@ def validate(
                 similarities.append(dissimilarities[least_similar_index].item())
                 class_pairs.append((classes_all[i].item(), classes_all[least_similar_index].item()))
                 image_indices.append((i, least_similar_index))
-
-        print(f'least_similar_pairs ({len(least_similar_pairs)}): {least_similar_pairs}')
 
         for img_idx_1, img_idx_2 in least_similar_pairs:
             image1 = images_all[img_idx_1]
@@ -348,8 +344,6 @@ def validate(
         image_pairs = [(images_all[i], images_all[j]) for i, j in least_similar_pairs]
         similarities = [same_class_similarities[i, j].item() for i, j in least_similar_pairs]
         classes = [(classes_all[i].item(), classes_all[j].item()) for i, j in least_similar_pairs]
-        print(f'similarities: {similarities}')
-        print(f'classes: {classes}')
 
         if len(least_similar_pairs) > 0:
             render_pairs(
@@ -360,8 +354,6 @@ def validate(
                 path=f"{output_path}/val/false_negatives_k_smallest",
                 filename=f"{training_iter}_least_similar.png"
             )
-
-        print(f'least_similar_pairs ({len(least_similar_pairs)}): {least_similar_pairs}')
 
     # compute AUC using roc_auc_score function, use similarities_all and same_or_diff_all
     similarities_upper_triangle = similarities_all.cpu().numpy()
@@ -389,15 +381,15 @@ def validate(
 def get_k_smallest_sorted_indices(arr: np.ndarray, k: int=10):
     flat_arr = arr.flatten()
     k = min(k, len(flat_arr))
-    
+
     # Get indices of 10 smallest values
     idx = np.argpartition(flat_arr, 10)[:10]
     values = flat_arr[idx]
     sorted_idx = idx[np.argsort(values)]
-    
+
     # Convert flat indices to row-column pairs
     rows, cols = np.unravel_index(sorted_idx, arr.shape)
-    
+
     return list(zip(rows, cols))
 
 
