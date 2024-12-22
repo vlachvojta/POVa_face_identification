@@ -318,11 +318,13 @@ def validate(
                 class_pairs.append((classes_all[i].item(), classes_all[least_similar_index].item()))
                 image_indices.append((i, least_similar_index))
 
+        print(f'least_similar_pairs ({len(least_similar_pairs)}): {least_similar_pairs}')
+
         for img_idx_1, img_idx_2 in least_similar_pairs:
             image1 = images_all[img_idx_1]
             image2 = images_all[img_idx_2]
             all_pairs.append((image1, image2))
-
+        
         if len(all_pairs) > 0:
             render_pairs(
                 pairs=all_pairs,
@@ -332,6 +334,34 @@ def validate(
                 path=f"{output_path}/val/false_negatives",
                 filename=f"{training_iter}_least_similar.png"
             )
+
+        # make a copy and detach from the graph without changing the original tensor
+        similarities_all_copy = similarities_all.clone().detach()
+        # to all similarities of different classes add 100 to not consider them in the least similar pairs
+        same_class_similarities = similarities_all_copy + 100 * ~same_or_diff_all
+
+        # get indices of same class pairs with the smallest similarity
+        least_similar_pairs = get_k_smallest_sorted_indices(same_class_similarities.cpu().numpy(), k=20)
+        least_similar_pairs = [(i, j) for i, j in least_similar_pairs if i < j]  # remove duplicates
+
+        image_pairs = [(images_all[i], images_all[j]) for i, j in least_similar_pairs]
+        similarities = [same_class_similarities[i, j].item() for i, j in least_similar_pairs]
+        classes = [(classes_all[i].item(), classes_all[j].item()) for i, j in least_similar_pairs]
+        print(f'similarities: {similarities}')
+        print(f'classes: {classes}')
+
+        if len(least_similar_pairs) > 0:
+            render_pairs(
+                pairs=image_pairs,
+                similarities=similarities,
+                classes=classes,
+                indices=least_similar_pairs,
+                path=f"{output_path}/val/false_negatives_k_smallest",
+                filename=f"{training_iter}_least_similar.png"
+            )
+
+        print(f'least_similar_pairs ({len(least_similar_pairs)}): {least_similar_pairs}')
+    # print(f'exiting'); exit()
 
     # setting diagonal to False to avoid self pairing
     mask = torch.eye(similarities_all.size(0), device=device, dtype=torch.bool)
@@ -346,6 +376,27 @@ def validate(
             same_or_diff_all=same_or_diff_all,
             monitor=monitor
         )
+
+def get_k_smallest_sorted_indices(arr: np.ndarray, k: int=10):
+    print(f'Finding k smallest sorted indices in array of shape {arr.shape}')
+    flat_arr = arr.flatten()
+    print(f'flat_arr.shape: {flat_arr.shape}')
+    k = min(k, len(flat_arr))
+    print(f'k after min: {k}')
+    
+    # Get indices of 10 smallest values
+    idx = np.argpartition(flat_arr, 10)[:10]
+    print(f'idx: {idx}')
+    values = flat_arr[idx]
+    print(f'values: {values}')
+    sorted_idx = idx[np.argsort(values)]
+    print(f'sorted_idx: {sorted_idx}')
+    
+    # Convert flat indices to row-column pairs
+    rows, cols = np.unravel_index(sorted_idx, arr.shape)
+    print(f'result: {list(zip(rows, cols))}')
+    
+    return list(zip(rows, cols))
 
 
 def calculate_accuracy_with_threshold(
