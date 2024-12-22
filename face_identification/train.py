@@ -301,20 +301,6 @@ def validate(
     similarities_all = torch.mm(embeddings_all, embeddings_all.T)
     same_or_diff_all = (classes_all.unsqueeze(0) == classes_all.unsqueeze(1)).to(device)
 
-    # setting diagonal to False to avoid self pairing
-    mask = torch.eye(similarities_all.size(0), device=device, dtype=torch.bool)
-    similarities_all = similarities_all.masked_select(~mask).view(similarities_all.size(0), -1)
-    same_or_diff_all = same_or_diff_all.masked_select(~mask).view(same_or_diff_all.size(0), -1)
-
-    thresholds = [0.0, 0.4, 0.8]
-    for threshold in thresholds:
-        calculate_accuracy_with_threshold(
-            threshold=threshold,
-            similarities_all=similarities_all,
-            same_or_diff_all=same_or_diff_all,
-            monitor=monitor
-        )
-        
     if render:
         least_similar_pairs = []
         similarities = []
@@ -346,6 +332,21 @@ def validate(
                 path=f"{output_path}/val/false_negatives",
                 filename=f"{training_iter}_least_similar.png"
             )
+
+    # setting diagonal to False to avoid self pairing
+    mask = torch.eye(similarities_all.size(0), device=device, dtype=torch.bool)
+    similarities_all = similarities_all.masked_select(~mask).view(similarities_all.size(0), -1)
+    same_or_diff_all = same_or_diff_all.masked_select(~mask).view(same_or_diff_all.size(0), -1)
+
+    thresholds = [0.0, 0.4, 0.8]
+    for threshold in thresholds:
+        calculate_accuracy_with_threshold(
+            threshold=threshold,
+            similarities_all=similarities_all,
+            same_or_diff_all=same_or_diff_all,
+            monitor=monitor
+        )
+
 
 def calculate_accuracy_with_threshold(
     threshold: float,
