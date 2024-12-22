@@ -18,6 +18,7 @@ from pytorch_metric_learning import losses, miners
 from pytorch_metric_learning.distances import CosineSimilarity
 import torch.multiprocessing as mp
 import torchvision.utils as vutils
+from sklearn.metrics import roc_auc_score
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -361,9 +362,17 @@ def validate(
             )
 
         print(f'least_similar_pairs ({len(least_similar_pairs)}): {least_similar_pairs}')
-    # print(f'exiting'); exit()
 
-    # setting diagonal to False to avoid self pairing
+    # compute AUC using roc_auc_score function, use similarities_all and same_or_diff_all
+    similarities_upper_triangle = similarities_all.cpu().numpy()
+    similarities_upper_triangle = similarities_upper_triangle[np.triu_indices(similarities_upper_triangle.shape[0], k=1)]
+    same_or_diff_upper_triangle = same_or_diff_all.cpu().numpy()
+    same_or_diff_upper_triangle = same_or_diff_upper_triangle[np.triu_indices(same_or_diff_upper_triangle.shape[0], k=1)]
+    # similarities_upper_triangle and same_or_diff_upper_triangle should be 1D arrays of the same length with the upper triangle of the original matrix
+    auc = roc_auc_score(same_or_diff_upper_triangle, similarities_upper_triangle)
+    monitor.add_value("val_auc", auc)
+
+    # remove main diagonal using mask to avoid self pairing
     mask = torch.eye(similarities_all.size(0), device=device, dtype=torch.bool)
     similarities_all = similarities_all.masked_select(~mask).view(similarities_all.size(0), -1)
     same_or_diff_all = same_or_diff_all.masked_select(~mask).view(same_or_diff_all.size(0), -1)
@@ -378,23 +387,16 @@ def validate(
         )
 
 def get_k_smallest_sorted_indices(arr: np.ndarray, k: int=10):
-    print(f'Finding k smallest sorted indices in array of shape {arr.shape}')
     flat_arr = arr.flatten()
-    print(f'flat_arr.shape: {flat_arr.shape}')
     k = min(k, len(flat_arr))
-    print(f'k after min: {k}')
     
     # Get indices of 10 smallest values
     idx = np.argpartition(flat_arr, 10)[:10]
-    print(f'idx: {idx}')
     values = flat_arr[idx]
-    print(f'values: {values}')
     sorted_idx = idx[np.argsort(values)]
-    print(f'sorted_idx: {sorted_idx}')
     
     # Convert flat indices to row-column pairs
     rows, cols = np.unravel_index(sorted_idx, arr.shape)
-    print(f'result: {list(zip(rows, cols))}')
     
     return list(zip(rows, cols))
 
