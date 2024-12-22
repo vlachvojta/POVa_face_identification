@@ -88,12 +88,12 @@ class DataLoader:
             image = self.image_preprocessor(image, save_image=save_image, image_src=self.data[index].filename)
             self.data[index].image = image
 
-        try:
-            return self.data[index]
-        finally:
-            if not self.preloaded_images:
-                # delete link to the image in the object to prevent RAM overflow
-                self.data[index].image = None
+        # try:
+        return self.data[index]
+        # finally:
+        #     if not self.preloaded_images:
+        #         # delete link to the image in the object to prevent RAM overflow
+        #         self.data[index].image = None
 
     def unique_classes(self):
         return set(item.id for item in self.data)
@@ -144,6 +144,10 @@ class DataLoaderTorchWrapper(DataLoader):
 
         if image.shape[2] == 3:  # Engines need images in RGB format [3, H, W]
             image = image.transpose(2, 0, 1)
+        
+        if not self.preloaded_images:
+            # delete link to the image in the object to prevent RAM overflow
+            item.image = None
 
         return {
             "image": image,
