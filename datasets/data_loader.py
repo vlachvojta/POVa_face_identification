@@ -18,7 +18,7 @@ class Partition(Enum):
 class DataLoader:
     def __init__(self, data_path, partition=Partition.TRAIN, filter_class = 0, filter_attributes = [],
                  sequential_classes: bool = False, limit: int = None, balance_subset: bool = False,
-                 image_preprocessor: ImagePreProcessor = None):
+                 image_preprocessor: ImagePreProcessor = None, balance_attributes: bool = False):
         self.data_path = data_path
         self.image_preprocessor = image_preprocessor
 
@@ -38,8 +38,20 @@ class DataLoader:
             self.data = [image for image in self.data if image.id == filter_class]
 
         if filter_attributes:
-            # Filter by attributes (check if filter_attributes is a subset of image attributes)
-            self.data = [image for image in self.data if set([attr.name for attr in filter_attributes]) <= set(image.attributes())]
+            if balance_attributes:
+                # Filter by attributes - balance number of images with and without the attributes (for the same person)
+                with_attr = [image for image in self.data if set([attr.name for attr in filter_attributes]) <= set(image.attributes())]
+                without_attr = [image for image in self.data if not set([attr.name for attr in filter_attributes]) <= set(image.attributes())]
+                self.data = []
+                for image_id in set(image.id for image in with_attr + without_attr):
+                    with_attr_id = [img for img in with_attr if img.id == image_id]
+                    without_attr_id = [img for img in without_attr if img.id == image_id]
+                    count = min(len(with_attr_id), len(without_attr_id))
+                    self.data.extend(with_attr_id[:count] + without_attr_id[:count])
+
+            else:
+                # Filter by attributes (check if filter_attributes is a subset of image attributes)
+                self.data = [image for image in self.data if set([attr.name for attr in filter_attributes]) <= set(image.attributes())]
 
         if sequential_classes:
             self.reorder_classes()
@@ -119,5 +131,5 @@ class DataLoaderTorchWrapper(DataLoader):
         return {
             "image": image,
             "class": item.id,
-            # "attributes": item.attributes()
+            "attributes": item.attributes()
         }
