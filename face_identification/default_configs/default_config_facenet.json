@@ -1,0 +1,4 @@
+{
+    "model_class": "FacenetPytorchWrapper",
+    "model_name": "vggface2"
+}

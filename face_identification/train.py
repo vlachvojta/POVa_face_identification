@@ -136,6 +136,17 @@ def main():
 
     logging.info("DONE")
 
+    # delete all data loaders to free memory and avoid program hanging
+    data_loaders = [trn_dataloader] + list(val_dataloaders.values())
+    for data_loader in data_loaders:
+        if hasattr(data_loader, '_iterator'):
+            del data_loader._iterator
+        del data_loader
+    del data_loaders
+
+    torch.cuda.empty_cache()
+    gc.collect()
+    sys.exit(0)
 
 def train(
     model: torch.nn.Module,
