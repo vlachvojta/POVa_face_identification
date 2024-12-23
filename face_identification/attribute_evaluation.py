@@ -42,7 +42,7 @@ def evaluate_attribute_accuracy():
     
     preprocessor = ImagePreProcessorMTCNN()
     val_dataset = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
-                                   sequential_classes=True, balance_subset=True, limit=1000,
+                                   sequential_classes=True, balance_classes=True,# limit=100,
                                    image_preprocessor=preprocessor)
 
     # Init data structure
@@ -55,7 +55,8 @@ def evaluate_attribute_accuracy():
     # Load all images, create embeddings
     for i in range(len(val_dataset)):
         item = val_dataset[i]
-        embedding = embedding_engine(np.array(item.image))
+        image = np.array(item.image).transpose(2, 0, 1)
+        embedding = embedding_engine(image)
 
         for attr in Attribute:
             if attr.name in item.attributes():
@@ -65,6 +66,8 @@ def evaluate_attribute_accuracy():
     
     accuracy_0 = get_accuracy(data, 0)
     accuracy_0_4 = get_accuracy(data, 0.4)
+    accuracy_0_6 = get_accuracy(data, 0.6)
+    accuracy_0_7 = get_accuracy(data, 0.7)
     accuracy_0_8 = get_accuracy(data, 0.8)
 
     combined_accuracy = {}
@@ -72,16 +75,18 @@ def evaluate_attribute_accuracy():
         combined_accuracy[attr.name] = [
             accuracy_0[attr.name][0],
             accuracy_0_4[attr.name][0],
+            accuracy_0_6[attr.name][0],
+            accuracy_0_7[attr.name][0],
             accuracy_0_8[attr.name][0],
             accuracy_0[attr.name][1]
         ]
     
     table = PrettyTable()
-    table.field_names = ["Attribute", "Accuracy (0)", "Accuracy (0.4)", "Accuracy (0.8)", "Number of pairs"]
+    table.field_names = ["Attribute", "Accuracy (0)", "Accuracy (0.4)", "Accuracy (0.6)", "Accuracy (0.7)", "Accuracy (0.8)", "Number of pairs"]
 
     sorted_accuracy = sorted(combined_accuracy.items(), key=lambda item: item[1][0], reverse=True)
     for attr, values in sorted_accuracy:
-        table.add_row([attr, f"{values[0]:.2f}", f"{values[1]:.2f}", f"{values[2]:.2f}", values[3]])
+        table.add_row([attr, f"{values[0]:.2f}", f"{values[1]:.2f}", f"{values[2]:.2f}", f"{values[3]:.2f}", f"{values[4]:.2f}", values[5]])
 
     print(table)
 
