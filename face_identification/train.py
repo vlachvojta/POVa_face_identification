@@ -95,9 +95,10 @@ def main():
         raise ValueError(f"Preprocessor {args.preprocessor} does not exist in ImagePreProcessor subclasses, see datasets/image_preprocessor.py.")
 
     logging.info(f'Loading trn dataset (this might take a while) ...')
+    attribute = [args.attribute] if args.attribute else None
     trn_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.TRAIN, sequential_classes=True, image_preprocessor=preprocessor,
-        filter_attributes=[args.attribute], balance_attributes=True)
+        filter_attributes=attribute, balance_attributes=True)
     logging.info("Loading val dataset(s) ...")
     val_dataset = CelebADataLoader(
         args.dataset_path, partition=Partition.VAL, sequential_classes=True, image_preprocessor=preprocessor,
