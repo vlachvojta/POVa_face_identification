@@ -295,7 +295,7 @@ def delete_first_of_each_class(images, classes):
 
 def evaluate_trained_model(embedding_engine, all_images, all_classes, images_without_first, classes_without_first):
     identification_engine = FaceIdentificationEngine(embedding_engine, all_images, all_classes,
-                                                     class_embedding_style=ClassEmbeddingStyle.FIRST,
+                                                     class_embedding_style=ClassEmbeddingStyle.MEAN,
                                                      class_embedding_file='tmp/class_embeddings.npy',
                                                      force_new_class_embeddings=True)
 
@@ -333,9 +333,9 @@ def test_trained_models():
                                     image_preprocessor=preprocessorResnet)
     
     imagesMTCNN, classesMTCNN = get_all_data(datasetMTCNN)
-    images_MTCNN_without_first, classes_MTCNN_without_first = delete_first_of_each_class(imagesMTCNN, classesMTCNN)
+    images_MTCNN_without_first, classes_MTCNN_without_first = imagesMTCNN, classesMTCNN #delete_first_of_each_class(imagesMTCNN, classesMTCNN)
     imagesResnet, classesResnet = get_all_data(datasetResnet)
-    images_Resnet_without_first, classes_Resnet_without_first = delete_first_of_each_class(imagesResnet, classesResnet)
+    images_Resnet_without_first, classes_Resnet_without_first = imagesResnet, classesResnet #delete_first_of_each_class(imagesResnet, classesResnet)
 
     print(f'Data loaded')
 
@@ -345,6 +345,8 @@ def test_trained_models():
         'facenet_05',
         'facenet_05_eyeglasses',
         'resnet_05_eyeglasses',
+        'facenet_05_blurry',
+        'resnet_05_blurry',
     ]
 
     embedding_engines = [
