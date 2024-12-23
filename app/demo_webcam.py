@@ -74,23 +74,25 @@ class App(ctk.CTk):
         
         attributes_frame = ctk.CTkFrame(self, fg_color="gray", corner_radius=0)
         attributes_frame.grid(row=0, column=2, rowspan=4, sticky="nsew")
-        attributes_frame.grid_rowconfigure(6, weight=1)
+        attributes_frame.grid_rowconfigure(8, weight=1)
         
         person_label = ctk.CTkLabel(attributes_frame, text="Person", font=ctk.CTkFont(weight="bold"), width=200)
         person_label.grid(row=0, column=0, padx=20, pady=(10, 2))
         self.person = ctk.CTkLabel(attributes_frame, text="")
         self.person.grid(row=1, column=0, padx=20, pady=0)
 
+        self.image_person = ctk.CTkLabel(attributes_frame, text="")
+        self.image_person.grid(row=2, column=0, padx=20, pady=5)
+
         class_label = ctk.CTkLabel(attributes_frame, text="Class", font=ctk.CTkFont(weight="bold"))
-        class_label.grid(row=2, column=0, padx=20, pady=(10, 2))
+        class_label.grid(row=3, column=0, padx=20, pady=(10, 2))
         self.classID = ctk.CTkLabel(attributes_frame, text="")
-        self.classID.grid(row=3, column=0, padx=20, pady=0)
-        
+        self.classID.grid(row=4, column=0, padx=20, pady=0)
+
         similarity_label = ctk.CTkLabel(attributes_frame, text="Similarity", font=ctk.CTkFont(weight="bold"))
-        similarity_label.grid(row=4, column=0, padx=20, pady=(10, 2))
+        similarity_label.grid(row=6, column=0, padx=20, pady=(10, 2))
         self.similarity = ctk.CTkLabel(attributes_frame, text="")
-        self.similarity.grid(row=5, column=0, padx=20, pady=0)
-        
+        self.similarity.grid(row=7, column=0, padx=20, pady=0)
 
     def load_file(self):
         filename = ctk.filedialog.askopenfilename(filetypes=[("Image files", ".png .jpg .jpeg")])
@@ -125,6 +127,7 @@ class App(ctk.CTk):
         resized_image = self.image.resize((220, int(220 * self.image.size[1] / self.image.size[0])))
         self.image_show.configure(image=ctk.CTkImage(light_image=resized_image, size=resized_image.size))
         
+        # Preprocess image and identify person
         img = self.preprocessor(cv2.cvtColor(np.array(self.image), cv2.COLOR_RGB2BGR))
         if img.shape[-1] == 3:
             img = img.transpose(2, 0, 1)
@@ -133,6 +136,15 @@ class App(ctk.CTk):
         self.person.configure(text=os.listdir(self.data_path)[int(result[0])].replace("_", " "))
         self.classID.configure(text=result[0])
         self.similarity.configure(text=f"{result[1][result[0]]:.3f}")
+        
+        # Open the first image in the identified person's directory
+        person_dir = os.path.join(self.data_path, os.listdir(self.data_path)[int(result[0])])
+        first_image_path = os.path.join(person_dir, os.listdir(person_dir)[0])
+        first_image = Image.open(first_image_path)
+        
+        # Display the first image in the attributes frame
+        resized_first_image = first_image.resize((100, int(100 * first_image.size[1] / first_image.size[0])))
+        self.image_person.configure(image=ctk.CTkImage(light_image=resized_first_image, size=resized_first_image.size))
         
 
 if __name__ == "__main__":
