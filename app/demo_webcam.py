@@ -152,18 +152,12 @@ class App(ctk.CTk):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-<<<<<<< HEAD
-    parser.add_argument("-s", "--src_path", required=True, help="Identities path")
-    parser.add_argument("-w", "--webcam_index", type=int, default=0, help="Webcam index")
-    args = parser.parse_args()
-    
-    app = App(args.src_path, args.webcam_index)
-=======
+
     parser.add_argument("-s", "--identities_path", required=True, help="Identities path")
     parser.add_argument("-w", "--webcam_index", type=int, default=0, help="Webcam index")
     args = parser.parse_args()
     
     app = App(args.identities_path, args.webcam_index)
->>>>>>> d44abe8 (Small fixes, add readme, reference images)
+
     app.mainloop()
     
