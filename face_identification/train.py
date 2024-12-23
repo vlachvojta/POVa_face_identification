@@ -199,70 +199,76 @@ def train(
     iteration = trained_steps
     train_losses = []
     t1 = time.time()
+    end_training = False
 
-    for batch_data in trn_dataloader:
-        iteration += 1
-        if iteration > max_iter:
+    for epoch in range(1_000):  # infinite loop to reload data how many times needed
+        if end_training:
             break
 
-        model.train()
+        for batch_data in trn_dataloader:
+            iteration += 1
+            if iteration > max_iter:
+                end_training = True
+                break
 
-        images = batch_data["image"].to(device).float()
-        classes = batch_data["class"].to(device)
+            model.train()
 
-        # print(f'images.shape: {images.shape}')
-        embeddings = model(images)
-        # print('embeddings.shape:', embeddings.shape)
+            images = batch_data["image"].to(device).float()
+            classes = batch_data["class"].to(device)
 
-        hard_pairs = miner(embeddings, classes)
+            # print(f'images.shape: {images.shape}')
+            embeddings = model(images)
+            # print('embeddings.shape:', embeddings.shape)
 
-        loss = criterion(embeddings, classes, hard_pairs)
+            hard_pairs = miner(embeddings, classes)
 
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        train_losses.append(loss.item())
-        
-        if render:
-            image_name = f"{iteration}_loss_{loss.item():.4f}.png"
-            render_batch_images(images = images, path = f"{output_path}/train", filename = image_name)
+            loss = criterion(embeddings, classes, hard_pairs)
 
-        if iteration % view_step == 0:
-            t2 = time.time()
+            # Backpropagation
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_losses.append(loss.item())
+            
+            if render:
+                image_name = f"{iteration}_loss_{loss.item():.4f}.png"
+                render_batch_images(images = images, path = f"{output_path}/train", filename = image_name)
 
-            monitor.iterations.append(iteration)
-            monitor.add_value("loss", "train", sum(train_losses) / len(train_losses))
+            if iteration % view_step == 0:
+                t2 = time.time()
 
-            train_losses = []
+                monitor.iterations.append(iteration)
+                monitor.add_value("loss", "train", sum(train_losses) / len(train_losses))
 
-            for val_name, val_data_loader in val_dataloaders.items():
-                validate(
-                    model=model,
-                    data_loader=val_data_loader,
-                    data_loader_name=val_name,
-                    criterion=criterion,
-                    device=device,
-                    monitor=monitor,
-                    render=render,
-                    output_path=output_path,
-                    training_iter = iteration,
-                )
+                train_losses = []
 
-            monitor.add_value("time", "view", t2 - t1)
-            monitor.add_value("time", "validation", time.time() - t2)
-            log_string = monitor.get_last_string()
-            print(f"\n{log_string}")
+                for val_name, val_data_loader in val_dataloaders.items():
+                    validate(
+                        model=model,
+                        data_loader=val_data_loader,
+                        data_loader_name=val_name,
+                        criterion=criterion,
+                        device=device,
+                        monitor=monitor,
+                        render=render,
+                        output_path=output_path,
+                        training_iter = iteration,
+                    )
 
-            monitor.report_results()
-            monitor.save_csv()
-            t1 = time.time()
-            # get memory summary
-            torch.cuda.empty_cache() # clear cuda cache
-            gc.collect()  # clear RAM cache
+                monitor.add_value("time", "view", t2 - t1)
+                monitor.add_value("time", "validation", time.time() - t2)
+                log_string = monitor.get_last_string()
+                print(f"\n{log_string}")
 
-        if iteration % save_step == 0:
-            save_model(model, output_path, iteration)
+                monitor.report_results()
+                monitor.save_csv()
+                t1 = time.time()
+                # get memory summary
+                torch.cuda.empty_cache() # clear cuda cache
+                gc.collect()  # clear RAM cache
+
+            if iteration % save_step == 0:
+                save_model(model, output_path, iteration)
 
 
 def validate(
