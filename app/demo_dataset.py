@@ -3,6 +3,8 @@ import os
 import argparse
 import customtkinter as ctk
 from PIL import ImageDraw
+import cv2
+import numpy as np
 
 # add parent of this file to path to enable importing
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -35,10 +37,10 @@ class App(ctk.CTk):
         title = ctk.CTkLabel(self.sidebar_frame, text="Face identification", font=ctk.CTkFont(size=20, weight="bold"))
         title.grid(row=0, column=0, padx=20, pady=(20, 10))
 
-        start_button = ctk.CTkButton(self.sidebar_frame, text="Next image", command=self.next_image)
-        start_button.grid(row=1, column=0, padx=20, pady=10)
-        restart_button = ctk.CTkButton(self.sidebar_frame, text="Detect face", command=self.detect_face)
-        restart_button.grid(row=2, column=0, padx=20, pady=10)
+        next_button = ctk.CTkButton(self.sidebar_frame, text="Next image", command=self.next_image)
+        next_button.grid(row=1, column=0, padx=20, pady=10)
+        detect_button = ctk.CTkButton(self.sidebar_frame, text="Detect face", command=self.detect_face)
+        detect_button.grid(row=2, column=0, padx=20, pady=10)
         
         
         reload_button = ctk.CTkButton(self.sidebar_frame, text="Reload", command=self.reload_data)
@@ -111,7 +113,7 @@ class App(ctk.CTk):
             self.face_detection_engine = FaceDetectionEngine()
         
         img = self.data_loader[self.index].image.copy()
-        face = self.face_detection_engine(img)
+        face = self.face_detection_engine(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR))
 
         draw = ImageDraw.Draw(img)
         draw.rectangle(face[0]["box"], outline="green", width=3)
