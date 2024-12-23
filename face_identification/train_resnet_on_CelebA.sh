@@ -34,8 +34,8 @@ python train.py \
     --render \
     --preprocessor ImagePreProcessorResnet \
     --max-iter 5000 \
-    --view-step 20 \
-    --save-step 100 \
+    --view-step 50 \
+    --save-step 500 \
     --val-size 1000 \
     $ATTRIBUTE \
     --batch-size 16
