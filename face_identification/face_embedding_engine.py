@@ -12,6 +12,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasets.ORL_dataset import ORLDataset
 from face_identification.face_embedding_models import BasicResnet, FacenetPytorchWrapper
+from common import utils
+from face_identification.train import load_model
 
 
 class FaceEmbeddingEngine:
@@ -96,6 +98,37 @@ class BasicResnetEmbeddingEngine(FaceEmbeddingEngine):
 
         # resize image to input_pixels
         image = F.interpolate(image, size=(self.INPUT_PIXELS, self.INPUT_PIXELS), mode='bilinear', align_corners=False)
+        embedding = self.model(image).detach().cpu().numpy()
+
+        if return_first:
+            return embedding[0]
+        return embedding
+
+class TrainedEmbeddingEngine(FaceEmbeddingEngine):
+    INPUT_PIXELS = 160
+
+    def __init__(self, trained_path: str, device: str = 'cuda', **kwargs):
+        super().__init__(**kwargs)
+        self.model, self.trained_steps = load_model(trained_path, device=device)
+        self.model.eval()
+        print(f'Loaded model {self.model.__class__.__name__} from {trained_path} trained for {self.trained_steps} steps.')
+        self.device = device
+
+        self.DIM = self.model.embedding_size
+
+    def extract_face_embeddings(self, image: np.ndarray):
+        image = torch.tensor(image).float().to(self.device)
+
+        if len(image.shape) == 3:
+            assert image.shape[0] == 3, f"Image should have 3 channels in a shape (channels, height, width), got {image.shape[0]} channels in shape {image.shape}"
+            image = image.unsqueeze(0)
+            return_first = True
+        elif len(image.shape) == 4:
+            assert image.shape[1] == 3, f"Image should have 3 channels in a shape (batch, channels, height, width), got {image.shape[1]} channels in shape {image.shape}"
+            return_first = False
+        else:
+            assert False, f"Image shape should have three dimensions (channels, height, width) or four (batch, channels, height, width), got {image.shape}"
+
         embedding = self.model(image).detach().cpu().numpy()
 
         if return_first:

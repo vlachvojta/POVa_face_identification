@@ -14,7 +14,7 @@ from datasets.data_loader import DataLoaderTorchWrapper as CelebADataLoader
 from datasets.data_loader import Partition
 from datasets.image_preprocessor import ImagePreProcessor, Squarify, Normalization, ImagePreProcessorMTCNN, ImagePreProcessorResnet
 from face_detection.face_detection_engine import FaceDetectionEngine
-from face_identification.face_embedding_engine import FaceEmbeddingEngine, FacenetEmbeddingEngine, BasicResnetEmbeddingEngine
+from face_identification.face_embedding_engine import FaceEmbeddingEngine, FacenetEmbeddingEngine, BasicResnetEmbeddingEngine, TrainedEmbeddingEngine
 from face_identification.face_identification_engine import FaceIdentificationEngine, DistanceFunction, ClassEmbeddingStyle, distance_criterium_is_max
 
 
@@ -293,7 +293,95 @@ def delete_first_of_each_class(images, classes):
 
     return images, classes
 
+def evaluate_trained_model(embedding_engine, all_images, all_classes, images_without_first, classes_without_first):
+    identification_engine = FaceIdentificationEngine(embedding_engine, all_images, all_classes,
+                                                     class_embedding_style=ClassEmbeddingStyle.FIRST,
+                                                     class_embedding_file='tmp/class_embeddings.npy',
+                                                     force_new_class_embeddings=True)
+
+    evaluation = FaceIdentificationEvaluation(identification_engine, print_interval=None) #100)
+
+    return evaluation(images_without_first, classes_without_first)
+
+def get_all_data(dataset: CelebADataLoader):
+    all_images = []
+    all_classes = []
+
+    for i in range(len(dataset)):
+        item = dataset[i]
+        all_images.append(item['image'])
+        all_classes.append(item['class'])
+
+    all_images = np.array(all_images)
+    all_classes = np.array(all_classes)
+
+    return all_images, all_classes
+
+def test_trained_models():
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    preprocessorMTCNN = ImagePreProcessorMTCNN()
+    preprocessorResnet = ImagePreProcessorResnet()
+    print(f'Getting all data from CelebA validation set with MTCNN and Resnet preprocessing...')
+
+    limit=1000
+    datasetMTCNN = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
+                                    sequential_classes=True, balance_classes=True, limit=limit,
+                                    image_preprocessor=preprocessorMTCNN)
+    datasetResnet = CelebADataLoader(data_path='../../datasets/CelebA/', partition=Partition.VAL,
+                                    sequential_classes=True, balance_classes=True, limit=limit,
+                                    image_preprocessor=preprocessorResnet)
+    
+    imagesMTCNN, classesMTCNN = get_all_data(datasetMTCNN)
+    images_MTCNN_without_first, classes_MTCNN_without_first = delete_first_of_each_class(imagesMTCNN, classesMTCNN)
+    imagesResnet, classesResnet = get_all_data(datasetResnet)
+    images_Resnet_without_first, classes_Resnet_without_first = delete_first_of_each_class(imagesResnet, classesResnet)
+
+    print(f'Data loaded')
+
+    train_root = '../../training/'
+    trained_model_paths=[
+        'resnet_05',
+        'facenet_05',
+        'facenet_05_eyeglasses',
+        'resnet_05_eyeglasses',
+    ]
+
+    embedding_engines = [
+        [BasicResnetEmbeddingEngine(device=device, verbose=False), 'BasicResnetEmbeddingEngine'],
+        [FacenetEmbeddingEngine(device=device, verbose=False), 'FacenetEmbeddingEngine'],
+    ]
+
+    # Load trained models as embedding engines
+    for trained_model_path in trained_model_paths:
+        trained_model_path = os.path.join(train_root, trained_model_path)
+        embedding_engine = TrainedEmbeddingEngine(trained_model_path, device=device, verbose=False)
+        embedding_engines.append([embedding_engine, trained_model_path])
+    
+    print(f'resting {len(embedding_engines)} trained models...')
+
+    results = []
+
+    for embedding_engine, trained_model_path in embedding_engines:
+        model_class = embedding_engine.model.__class__.__name__
+        print(f'Trained model: {model_class}')
+
+        if 'Facenet' in model_class or 'InceptionResnetV1' in model_class:
+            result = evaluate_trained_model(embedding_engine, imagesMTCNN, classesMTCNN, images_MTCNN_without_first, classes_MTCNN_without_first)
+            results.append((trained_model_path, result))
+        elif 'BasicResnet' in model_class:
+            result = evaluate_trained_model(embedding_engine, imagesResnet, classesResnet, images_Resnet_without_first, classes_Resnet_without_first)
+            results.append((trained_model_path, result))
+        else:
+            raise ValueError(f'Unknown model class: {model_class}, do not know how to preprocess images.')
+
+    print('\n--------------------')
+    for trained_model_path, result in results:
+        print(f'Trained model: {trained_model_path}, Accuracy: {result:.3f}')
+
+
 if __name__ == '__main__':
     test_evaluation_with_ORL_dataset()
     # test_preprocessing_of_CelebA_images_val_set()
     # test_resnet_sanity_check()
+    # test_trained_models()
