@@ -28,11 +28,14 @@ class App(ctk.CTk):
         embedding_engine = FacenetEmbeddingEngine(device=device, verbose=False)
         self.preprocessor = ImagePreProcessorMTCNN(device)
         
+        # Load reference images
         images = []
         targets = []
         id = -1
         for root, _, files in os.walk(self.data_path): 
             for file in files:
+                if not (file.endswith('.jpg') or file.endswith('.png')):
+                    continue
                 img = cv2.imread(os.path.join(root, file))
                 img = self.preprocessor(img)
                 if img.shape[-1] == 3:  # Engines need images in RGB format [3, H, W]
@@ -149,10 +152,18 @@ class App(ctk.CTk):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+<<<<<<< HEAD
     parser.add_argument("-s", "--src_path", required=True, help="Identities path")
     parser.add_argument("-w", "--webcam_index", type=int, default=0, help="Webcam index")
     args = parser.parse_args()
     
     app = App(args.src_path, args.webcam_index)
+=======
+    parser.add_argument("-s", "--identities_path", required=True, help="Identities path")
+    parser.add_argument("-w", "--webcam_index", type=int, default=0, help="Webcam index")
+    args = parser.parse_args()
+    
+    app = App(args.identities_path, args.webcam_index)
+>>>>>>> d44abe8 (Small fixes, add readme, reference images)
     app.mainloop()
     
