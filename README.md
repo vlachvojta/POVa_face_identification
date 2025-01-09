@@ -27,12 +27,10 @@ Sources:
 
 </details>
 
-## Project report [PDF](/docs/final_report.pdf)
+## Results [Report](/docs/final_report.pdf) [Presentation](/docs/final_presentation.pdf)
 
-The goal of this project was to develop a facial recognition system from images. To achieve this, we im-
-plemented and evaluated a system utilizing two pre-trained models (VGGFace2 and ResNet50) alongside
-fine-tuning techniques. Our experiments demonstrated the effectiveness of attribute-focused training in im-
-proving recognition accuracy under challenging conditions such as sunglasses, lipstick, and blurry images. The
+The goal of this project was to develop a facial recognition system from images. To achieve this, we implemented and evaluated a system utilizing two pre-trained models (VGGFace2 and ResNet50) alongside
+fine-tuning techniques. Our experiments demonstrated the effectiveness of attribute-focused training in improving recognition accuracy under challenging conditions such as sunglasses, lipstick, and blurry images. The
 results confirmed the robustness of the selected models and methodologies while highlighting areas for further
 optimization. The resulting demo application provides a practical example of face identification, showcasing
 its potential for user-friendly face recognition.
